@@ -1,12 +1,16 @@
 services:
-  web:
+  jg_nav:
+    image: jg_nav:latest
     build: .
+    container_name: jg_nav
     ports:
-      - "2266:2266"
-    volumes:
-      - ./data:/app/data
-      - ./uploads:/app/public/uploads
+      - "2266:3000"
     environment:
+      - NODE_ENV=production
       - DATABASE_URL=file:/app/data/dev.db
-      - NEXT_PUBLIC_SITE_URL=http://localhost:2266
-    restart: always
+    volumes:
+      - jg_data:/app/data
+    restart: unless-stopped
+
+volumes:
+  jg_data:

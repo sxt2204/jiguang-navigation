@@ -1,7 +1,8 @@
 import fs from 'fs';
 import path from 'path';
-import https from 'https';
 import { prisma } from './prisma';
+import { Readable } from 'stream';
+import { finished } from 'stream/promises';
 
 const UPLOAD_DIR = path.join(process.cwd(), 'public', 'uploads', 'icons');
 
@@ -12,28 +13,41 @@ if (!fs.existsSync(UPLOAD_DIR)) {
 
 export async function downloadAndSaveIcon(siteId: string, iconUrl: string) {
     try {
-        const filename = `site-${siteId}-${Date.now()}.png`;
-        const filepath = path.join(UPLOAD_DIR, filename);
-        const publicPath = `/uploads/icons/${filename}`;
+        // Optimization: Check if we already have this icon for this site
+        const existingSite = await prisma.site.findUnique({ where: { id: siteId } });
+        if (existingSite?.customIconUrl?.startsWith('/uploads/') && existingSite.iconType === 'upload') {
+            // Check if file actually exists
+            const urlWithoutQuery = existingSite.customIconUrl.split('?')[0];
+            const localPath = path.join(process.cwd(), 'public', urlWithoutQuery);
 
-        // Download image
-        await new Promise((resolve, reject) => {
-            const file = fs.createWriteStream(filepath);
-            https.get(iconUrl, (response) => {
-                if (response.statusCode !== 200) {
-                    reject(new Error(`Failed to download icon: ${response.statusCode}`));
-                    return;
-                }
-                response.pipe(file);
-                file.on('finish', () => {
-                    file.close();
-                    resolve(true);
-                });
-            }).on('error', (err) => {
-                fs.unlink(filepath, () => { });
-                reject(err);
-            });
+            if (fs.existsSync(localPath)) {
+                console.log(`[Icon Downloader] Skipping download for site ${siteId}, already has local icon: ${existingSite.customIconUrl}`);
+                return existingSite.customIconUrl;
+            }
+        }
+
+        const filename = `site-${siteId}.png`;
+        const filepath = path.join(UPLOAD_DIR, filename);
+        // Add timestamp as query param for cache busting
+        const publicPath = `/uploads/icons/${filename}?v=${Date.now()}`;
+
+        const response = await fetch(iconUrl, {
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+            }
         });
+
+        if (!response.ok) {
+            throw new Error(`Failed to download icon: ${response.status} ${response.statusText}`);
+        }
+
+        if (!response.body) {
+            throw new Error('No response body');
+        }
+
+        const fileStream = fs.createWriteStream(filepath, { flags: 'w' });
+        // @ts-ignore - response.body is a ReadableStream, but we need to convert it for Node fs
+        await finished(Readable.fromWeb(response.body).pipe(fileStream));
 
         // Update database with local path
         await prisma.site.update({
@@ -57,7 +71,9 @@ export async function deleteIcon(customIconUrl: string) {
     if (!customIconUrl || !customIconUrl.startsWith('/uploads/')) return;
 
     try {
-        const filename = customIconUrl.split('/').pop();
+        // Remove query parameters if present
+        const urlWithoutQuery = customIconUrl.split('?')[0];
+        const filename = urlWithoutQuery.split('/').pop();
         if (!filename) return;
 
         const filepath = path.join(UPLOAD_DIR, filename);
@@ -67,5 +83,32 @@ export async function deleteIcon(customIconUrl: string) {
         }
     } catch (error) {
         console.error('Error deleting icon:', error);
+    }
+}
+
+export async function saveBase64Icon(siteId: string, base64String: string) {
+    try {
+        // Extract content type and data
+        const matches = base64String.match(/^data:image\/([a-zA-Z+]+);base64,(.+)$/);
+        if (!matches || matches.length !== 3) {
+            return null;
+        }
+
+        const ext = matches[1] === 'jpeg' ? 'jpg' : matches[1];
+        const data = matches[2];
+        const buffer = Buffer.from(data, 'base64');
+
+        const filename = `site-${siteId}.${ext}`;
+        const filepath = path.join(UPLOAD_DIR, filename);
+        // Add timestamp as query param for cache busting
+        const publicPath = `/uploads/icons/${filename}?v=${Date.now()}`;
+
+        fs.writeFileSync(filepath, buffer);
+        console.log(`Base64 icon saved for site ${siteId}: ${publicPath}`);
+
+        return publicPath;
+    } catch (error) {
+        console.error(`Error saving base64 icon for site ${siteId}:`, error);
+        return null;
     }
 }

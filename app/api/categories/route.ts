@@ -23,19 +23,17 @@ export async function PUT(request: Request) {
         const body = await request.json();
         // Handle bulk update for reordering or single update
         if (Array.isArray(body)) {
-            // Bulk update order and properties
-            await prisma.$transaction(
-                body.map((cat: any) =>
-                    prisma.category.update({
-                        where: { name: cat.name },
-                        data: {
-                            order: cat.order,
-                            color: cat.color,
-                            isHidden: cat.isHidden
-                        }
-                    })
-                )
-            );
+            // 串行更新，避免SQLite锁冲突
+            for (const cat of body) {
+                await prisma.category.update({
+                    where: { name: cat.name },
+                    data: {
+                        order: cat.order,
+                        color: cat.color,
+                        isHidden: cat.isHidden
+                    }
+                });
+            }
             return NextResponse.json({ success: true });
         } else {
             const category = await prisma.category.update({
@@ -50,6 +48,7 @@ export async function PUT(request: Request) {
             return NextResponse.json(category);
         }
     } catch (error) {
+        console.error('[Categories API] Error:', error);
         return NextResponse.json({ error: 'Failed to update category' }, { status: 500 });
     }
 }

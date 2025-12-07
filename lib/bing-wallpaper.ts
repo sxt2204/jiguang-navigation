@@ -13,16 +13,57 @@ if (!fs.existsSync(BING_DIR)) {
 
 export async function fetchAndCacheBingWallpaper() {
     try {
+        // 0. Cache First Strategy: Check if we already have today's wallpaper
+        const today = new Date();
+        const yyyy = today.getFullYear();
+        const mm = String(today.getMonth() + 1).padStart(2, '0');
+        const dd = String(today.getDate()).padStart(2, '0');
+        const todayStr = `${yyyy}${mm}${dd}`;
+        const todayFilename = `bing-${todayStr}.jpg`;
+
+        const cachedToday = await (prisma as any).wallpaper.findFirst({
+            where: { filename: todayFilename, type: 'bing' }
+        });
+
+        if (cachedToday && fs.existsSync(path.join(process.cwd(), 'public', cachedToday.url))) {
+            return cachedToday;
+        }
+
         // 1. Fetch Bing JSON
         const bingJsonUrl = 'https://www.bing.com/HPImageArchive.aspx?format=js&idx=0&n=1&mkt=zh-CN';
         const bingData: any = await new Promise((resolve, reject) => {
-            https.get(bingJsonUrl, (res) => {
+            const req = https.get(bingJsonUrl, (res) => {
                 let data = '';
                 res.on('data', (chunk) => data += chunk);
-                res.on('end', () => resolve(JSON.parse(data)));
-                res.on('error', reject);
+                res.on('end', () => {
+                    try {
+                        resolve(JSON.parse(data));
+                    } catch (e) {
+                        reject(e);
+                    }
+                });
             });
+            req.on('error', (e) => reject(e));
+            req.setTimeout(5000, () => {
+                req.destroy();
+                reject(new Error('Timeout'));
+            });
+        }).catch(async (e) => {
+            console.warn('Bing API unreachable, falling back to cache:', e.message);
+            return null;
         });
+
+        if (!bingData?.images?.[0]) {
+            // Fallback: Return latest cached wallpaper
+            const latest = await (prisma as any).wallpaper.findFirst({
+                where: { type: 'bing' },
+                orderBy: { createdAt: 'desc' }
+            });
+            if (latest && fs.existsSync(path.join(process.cwd(), 'public', latest.url))) {
+                return latest;
+            }
+            throw new Error('No wallpaper available (Offline & No Cache)');
+        }
 
         if (!bingData?.images?.[0]) throw new Error('Invalid Bing API response');
 
@@ -45,49 +86,57 @@ export async function fetchAndCacheBingWallpaper() {
         const publicPath = `/uploads/wallpapers/bing/${filename}`;
 
         // 2. Check if already cached
-        const existing = await (prisma as any).wallpaper.findFirst({
+        let wallpaper = await (prisma as any).wallpaper.findFirst({
             where: { filename, type: 'bing' }
         });
 
-        if (existing && fs.existsSync(filepath)) {
-            return existing;
+        if (!wallpaper || !fs.existsSync(filepath)) {
+            // 3. Download if not exists
+            await new Promise((resolve, reject) => {
+                const file = fs.createWriteStream(filepath);
+                https.get(imageUrl, (response) => {
+                    if (response.statusCode !== 200) {
+                        reject(new Error(`Failed to download wallpaper: ${response.statusCode}`));
+                        return;
+                    }
+                    response.pipe(file);
+                    file.on('finish', () => {
+                        file.close();
+                        resolve(true);
+                    });
+                }).on('error', (err) => {
+                    fs.unlink(filepath, () => { });
+                    reject(err);
+                });
+            });
+
+            // 4. Save to DB
+            // If it was in DB but file missing, update it? Or just create new if null.
+            // Simplified: If we are here, we downloaded it.
+            // If 'wallpaper' var was not null but file missing, we should update or delete/create.
+            // Safest: upsert or delete then create.
+            if (wallpaper) {
+                await (prisma as any).wallpaper.delete({ where: { id: wallpaper.id } });
+            }
+
+            wallpaper = await (prisma as any).wallpaper.create({
+                data: {
+                    url: publicPath,
+                    type: 'bing',
+                    filename,
+                    size: fs.statSync(filepath).size
+                }
+            });
         }
 
-        // 3. Download if not exists
-        await new Promise((resolve, reject) => {
-            const file = fs.createWriteStream(filepath);
-            https.get(imageUrl, (response) => {
-                if (response.statusCode !== 200) {
-                    reject(new Error(`Failed to download wallpaper: ${response.statusCode}`));
-                    return;
-                }
-                response.pipe(file);
-                file.on('finish', () => {
-                    file.close();
-                    resolve(true);
-                });
-            }).on('error', (err) => {
-                fs.unlink(filepath, () => { });
-                reject(err);
-            });
-        });
-
-        // 4. Save to DB
-        const wallpaper = await (prisma as any).wallpaper.create({
-            data: {
-                url: publicPath,
-                type: 'bing',
-                filename,
-                size: fs.statSync(filepath).size
-            }
-        });
-
-        // 5. Handle Cache Mode (Cleanup)
+        // 5. Handle Cache Mode (Cleanup) - ALWAYS RUN
         const settings = await prisma.globalSettings.findUnique({ where: { id: 1 } });
-        const cacheMode = settings?.bingCacheMode || 'keep-daily';
+        const cacheMode = settings?.bingCacheMode || 'keep-all';
 
         if (cacheMode === 'keep-daily') {
             // Delete all other Bing wallpapers
+            /* 
+            // DISABLED: User requested to keep all synced wallpapers
             const others = await (prisma as any).wallpaper.findMany({
                 where: { type: 'bing', id: { not: wallpaper.id } }
             });
@@ -99,6 +148,7 @@ export async function fetchAndCacheBingWallpaper() {
                 // Delete DB record
                 await (prisma as any).wallpaper.delete({ where: { id: w.id } });
             }
+            */
         }
 
         return wallpaper;

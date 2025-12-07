@@ -6,6 +6,15 @@ export async function PUT(request: Request) {
         const body = await request.json();
         const { layout, config, theme } = body;
 
+        console.log('[Settings API] Received update request');
+        // console.log('[Settings API] Config keys:', config ? Object.keys(config) : 'none');
+        // console.log('[Settings API] privateMode:', config?.privateMode);
+        console.log('[Settings API] Layout update:', layout ? 'Present' : 'Missing');
+        if (layout) {
+            console.log('[Settings API] bgUrl:', layout.bgUrl);
+            console.log('[Settings API] bgType:', layout.bgType);
+        }
+
         const settings = await prisma.globalSettings.upsert({
             where: { id: 1 },
             update: {
@@ -23,8 +32,11 @@ export async function PUT(request: Request) {
             } as any
         });
 
+        console.log('[Settings API] Saved successfully, id:', settings.id);
+
         return NextResponse.json(settings);
     } catch (error) {
+        console.error('[Settings API] Error:', error);
         return NextResponse.json({ error: 'Failed to update settings' }, { status: 500 });
     }
 }

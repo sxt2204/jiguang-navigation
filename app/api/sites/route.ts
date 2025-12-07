@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { downloadAndSaveIcon } from '@/lib/icon-downloader';
+import { downloadAndSaveIcon, saveBase64Icon, deleteIcon } from '@/lib/icon-downloader';
 
 const getFaviconUrl = (domain: string) => `https://www.google.com/s2/favicons?domain=${domain}&sz=128`;
 
@@ -15,7 +15,7 @@ export async function POST(request: Request) {
 
         // Logic: If auto, use Google Favicon URL initially.
         // If custom URL (http), use it.
-        // In both cases, trigger background download.
+        // If Base64, save to disk.
 
         if (body.iconType === 'auto' && body.url) {
             try {
@@ -25,9 +25,17 @@ export async function POST(request: Request) {
                 initialCustomIconUrl = downloadUrl; // Temporary remote URL
                 shouldDownload = true;
             } catch (e) { }
-        } else if (body.iconType === 'upload' && body.customIconUrl && body.customIconUrl.startsWith('http')) {
-            downloadUrl = body.customIconUrl;
-            shouldDownload = true;
+        } else if (body.iconType === 'upload' && body.customIconUrl) {
+            if (body.customIconUrl.startsWith('http')) {
+                downloadUrl = body.customIconUrl;
+                shouldDownload = true;
+            } else if (body.customIconUrl.startsWith('data:image')) {
+                // Handle Base64 Upload immediately
+                const savedPath = await saveBase64Icon(body.id || 'temp', body.customIconUrl);
+                if (savedPath) {
+                    initialCustomIconUrl = savedPath;
+                }
+            }
         }
 
         const site = await prisma.site.create({
@@ -41,13 +49,25 @@ export async function POST(request: Request) {
                 icon: body.icon,
                 iconType: initialIconType,
                 customIconUrl: initialCustomIconUrl,
-                order: body.order || 0
+                titleFont: body.titleFont,
+                descFont: body.descFont,
+                titleColor: body.titleColor,
+                descColor: body.descColor,
+                titleSize: body.titleSize ? parseInt(body.titleSize) : null,
+                descSize: body.descSize ? parseInt(body.descSize) : null,
+                order: body.order || 0,
+                isHidden: body.isHidden || false
             }
         });
 
-        // Trigger background download
+        // If we used a temp ID for filename, we might want to rename it, but it's fine for now.
+        // Ideally we should use the real ID.
+        // If we saved base64 with 'temp', we can't easily rename without FS ops.
+        // Optimization: If we really want the ID in filename, we'd need to create site first then save file then update site.
+        // But for now, let's just use the timestamp in filename which is unique enough.
+
+        // Trigger background download for HTTP urls
         if (shouldDownload && downloadUrl) {
-            // Do not await this, let it run in background
             downloadAndSaveIcon(site.id, downloadUrl).catch(console.error);
         }
 
@@ -60,18 +80,23 @@ export async function POST(request: Request) {
 export async function PUT(request: Request) {
     try {
         const body = await request.json();
+        // Console log strictly limited
+        if (!Array.isArray(body)) {
+            console.log('[Sites API] Single PUT:', JSON.stringify(body).substring(0, 200));
+        }
+
         if (Array.isArray(body)) {
-            await prisma.$transaction(
-                body.map((site: any) =>
-                    prisma.site.update({
-                        where: { id: site.id },
-                        data: {
-                            order: site.order,
-                            category: site.category
-                        }
-                    })
-                )
-            );
+            // 串行更新，避免SQLite锁冲突
+            for (const site of body) {
+                await prisma.site.update({
+                    where: { id: site.id },
+                    data: {
+                        order: site.order,
+                        category: site.category,
+                        isHidden: site.isHidden // Added isHidden support for batch update
+                    }
+                });
+            }
             return NextResponse.json({ success: true });
         }
 
@@ -79,11 +104,6 @@ export async function PUT(request: Request) {
         let initialCustomIconUrl = body.customIconUrl;
         let shouldDownload = false;
         let downloadUrl = '';
-
-        // Only trigger download if URL changed or type changed to auto
-        // We can't easily check "changed" without fetching first, but for PUT we can just check inputs.
-        // If user explicitly sets 'auto', we re-download.
-        // If user sets 'upload' with http, we re-download.
 
         if (body.iconType === 'auto' && body.url) {
             try {
@@ -93,11 +113,18 @@ export async function PUT(request: Request) {
                 initialCustomIconUrl = downloadUrl;
                 shouldDownload = true;
             } catch (e) { }
-        } else if (body.iconType === 'upload' && body.customIconUrl && body.customIconUrl.startsWith('http')) {
-            // Check if it's already a local path
-            if (!body.customIconUrl.startsWith('/uploads/')) {
-                downloadUrl = body.customIconUrl;
-                shouldDownload = true;
+        } else if (body.iconType === 'upload' && body.customIconUrl) {
+            if (body.customIconUrl.startsWith('http')) {
+                if (!body.customIconUrl.startsWith('/uploads/')) {
+                    downloadUrl = body.customIconUrl;
+                    shouldDownload = true;
+                }
+            } else if (body.customIconUrl.startsWith('data:image')) {
+                // Handle Base64 Upload
+                const savedPath = await saveBase64Icon(body.id, body.customIconUrl);
+                if (savedPath) {
+                    initialCustomIconUrl = savedPath;
+                }
             }
         }
 
@@ -112,7 +139,14 @@ export async function PUT(request: Request) {
                 icon: body.icon,
                 iconType: initialIconType,
                 customIconUrl: initialCustomIconUrl,
-                order: body.order
+                titleFont: body.titleFont,
+                descFont: body.descFont,
+                titleColor: body.titleColor,
+                descColor: body.descColor,
+                titleSize: body.titleSize ? parseInt(body.titleSize) : null,
+                descSize: body.descSize ? parseInt(body.descSize) : null,
+                order: body.order,
+                isHidden: body.isHidden
             }
         });
 
@@ -126,7 +160,7 @@ export async function PUT(request: Request) {
     }
 }
 
-import { deleteIcon } from '@/lib/icon-downloader';
+
 
 export async function DELETE(request: Request) {
     try {

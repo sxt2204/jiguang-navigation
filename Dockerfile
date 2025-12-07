@@ -1,69 +1,75 @@
-FROM node:20-alpine AS base
-
-# Install dependencies only when needed
-FROM base AS deps
-# Check https://github.com/nodejs/docker-node/tree/b4117f9333da4138b03a546ec926ef50a31506c3#nodealpine to understand why libc6-compat might be needed.
-RUN apk add --no-cache libc6-compat
+# 构建阶段 - 安装依赖
+FROM node:20-slim AS deps
 WORKDIR /app
 
-# Install dependencies based on the preferred package manager
-COPY package.json package-lock.json* ./
-RUN \
-  if [ -f package-lock.json ]; then npm ci; \
-  else echo "Lockfile not found." && exit 1; \
-  fi
+# 安装 OpenSSL（Prisma 需要）
+RUN apt-get update && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
 
-# Rebuild the source code only when needed
-FROM base AS builder
+# 复制 package 文件
+COPY package.json package-lock.json ./
+RUN npm ci
+
+# 构建阶段
+FROM node:20-slim AS builder
 WORKDIR /app
+
+# 安装 OpenSSL
+RUN apt-get update && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
+
+# 复制依赖
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
-# Next.js collects completely anonymous telemetry data about general usage.
-# Learn more here: https://nextjs.org/telemetry
-# Uncomment the following line in case you want to disable telemetry during the build.
-ENV NEXT_TELEMETRY_DISABLED 1
+# 删除本地.env文件，使用Docker环境变量
+RUN rm -f .env .env.local .env.production
 
+# 设置生产环境数据库路径
+ENV DATABASE_URL="file:/app/data/dev.db"
+
+# 生成 Prisma Client
 RUN npx prisma generate
-# Compile seed script
-RUN npx tsc prisma/seed.ts --esModuleInterop
+
+# 构建应用
 RUN npm run build
 
-# Production image, copy all the files and run next
-FROM base AS runner
+# 运行阶段
+FROM node:20-slim AS runner
 WORKDIR /app
 
-# Install OpenSSL for Prisma
-RUN apk add --no-cache openssl
+ENV NODE_ENV=production
+ENV PORT=3000
 
-ENV NODE_ENV production
-# Uncomment the following line in case you want to disable telemetry during runtime.
-ENV NEXT_TELEMETRY_DISABLED 1
+# 安装 OpenSSL（Prisma 需要）
+RUN apt-get update && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
 
+# 创建非 root 用户
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
 
+# 创建数据目录
+RUN mkdir -p /app/data && chown nextjs:nodejs /app/data
+
+# 复制必要文件
 COPY --from=builder /app/public ./public
+COPY --from=builder /app/.next/standalone ./
+COPY --from=builder /app/.next/static ./.next/static
 
-# Set the correct permission for prerender cache
-RUN mkdir .next
-RUN chown nextjs:nodejs .next
+# 复制 Prisma 相关文件（schema 和初始数据库备份）
+COPY --from=builder /app/prisma/schema.prisma ./prisma/
+COPY --from=builder /app/prisma/dev.db ./prisma/dev.db.init
+COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
+COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
 
-# Automatically leverage output traces to reduce image size
-# https://nextjs.org/docs/advanced-features/output-file-tracing
-COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
-COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+# 复制启动脚本
+COPY entrypoint.sh ./entrypoint.sh
+RUN chmod +x ./entrypoint.sh
 
-# Copy prisma schema for migrations
-COPY --from=builder /app/prisma ./prisma
+# 设置权限
+RUN chown -R nextjs:nodejs /app
 
 # USER nextjs
 
-EXPOSE 2266
+EXPOSE 3000
 
-ENV PORT 2266
-# set hostname to localhost
-ENV HOSTNAME "0.0.0.0"
-
-# Start script to run migrations, seed data, and then start the app
-CMD ["/bin/sh", "-c", "npx prisma@5.22.0 migrate deploy && node prisma/seed.js && node server.js"]
+# 使用启动脚本（检查并初始化数据库）
+CMD ["./entrypoint.sh"]

@@ -1,0 +1,27 @@
+# 依赖
+node_modules
+npm-debug.log
+
+# 构建产物
+.next
+out
+
+# Git
+.git
+.gitignore
+
+# 开发文件
+.env.local
+.env.development
+.env.test
+*.md
+.vscode
+.idea
+
+# 操作系统
+.DS_Store
+Thumbs.db
+
+# 其他
+*.log
+coverage

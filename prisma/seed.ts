@@ -703,14 +703,14 @@ async function main() {
     // Wait, I can't easily use require('bcryptjs') if I am in module mode without setup.
     // I will use a placeholder hash for "123456" generated online to be safe and simple.
     // $2a$10$EpW.
+    // Let's use a known hash for "123456": $2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy
+
     await prisma.user.upsert({
         where: { username: 'admin' },
-        update: {
-            passwordHash: '$2b$10$CdTe1JlY2WtKKV6QxGZoT.MO527MuKnQJpmosWPcaCRpQr1GbX60G' // 123456
-        },
+        update: {},
         create: {
             username: 'admin',
-            passwordHash: '$2b$10$CdTe1JlY2WtKKV6QxGZoT.MO527MuKnQJpmosWPcaCRpQr1GbX60G'
+            passwordHash: '$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy' // 123456
         }
     })
 

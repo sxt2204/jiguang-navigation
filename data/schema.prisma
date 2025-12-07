@@ -1,0 +1,62 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Site {
+  id            String  @id @default(uuid())
+  name          String
+  url           String
+  desc          String?
+  category      String
+  color         String?
+  icon          String?
+  iconType      String?
+  customIconUrl String?
+  order         Int     @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model Category {
+  id        String  @id @default(uuid())
+  name      String  @unique
+  color     String?
+  isHidden  Boolean @default(false)
+  order     Int     @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model User {
+  username     String @id
+  passwordHash String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model GlobalSettings {
+  id        Int      @id @default(1)
+  layout    String   // JSON string
+  config    String   // JSON string
+  theme     String   // JSON string
+  searchEngine String @default("Google")
+  bingCacheMode String @default("keep-all") // 'keep-all' | 'keep-daily'
+  updatedAt DateTime @updatedAt
+}
+
+model Wallpaper {
+  id        String   @id @default(uuid())
+  url       String   // Local path
+  type      String   // 'bing' | 'custom'
+  filename  String
+  size      Int?
+  createdAt DateTime @default(now())
+}
