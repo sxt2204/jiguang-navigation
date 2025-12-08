@@ -1,0 +1,86 @@
+name: PR Quality Gate
+
+on:
+  pull_request:
+    branches: [ main ]
+    types: [opened, synchronize, reopened]
+
+jobs:
+  # 1. 检查代码格式与规范
+  lint-and-format:
+    name: "检查: ESLint & 代码格式"
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+      - name: 设置 Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+      - name: 安装依赖
+        run: npm ci
+      - name: 运行 ESLint 检查
+        run: npm run lint # 请确保你的package.json中配置了lint脚本
+      - name: 检查代码格式 (Prettier)
+        run: npx prettier --check . # 如果项目使用了Prettier
+
+  # 2. 运行TypeScript类型检查
+  type-check:
+    name: "检查: TypeScript 类型"
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+      - name: 设置 Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+      - name: 安装依赖
+        run: npm ci
+      - name: 运行 TypeScript 编译检查
+        run: npx tsc --noEmit # 或使用项目自身的脚本，如 npm run type-check
+
+  # 3. 构建检查 (确保Next.js能正常构建)
+  build:
+    name: "检查: Next.js 生产构建"
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+      - name: 设置 Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+      - name: 安装依赖
+        run: npm ci
+      - name: 运行生产构建
+        run: npm run build
+        env:
+          # 构建时可能需要的一些环境变量占位符
+          DATABASE_URL: ${{ secrets.DATABASE_URL || 'file:./dev.db' }}
+
+  # 4. 运行测试 (如果项目有测试)
+  test:
+    name: "检查: 单元测试"
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+      - name: 设置 Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+      - name: 安装依赖
+        run: npm ci
+      - name: 初始化测试数据库 (示例)
+        run: npx prisma db push --accept-data-loss
+        env:
+          DATABASE_URL: 'file:./test.db'
+      - name: 运行测试
+        run: npm test
+        env:
+          DATABASE_URL: 'file:./test.db'
