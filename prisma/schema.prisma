@@ -28,8 +28,10 @@ model Site {
   descSize      Int?
   isHidden      Boolean @default(false)
   order         Int     @default(0)
+  type          String  @default("site") // 'site' | 'folder'
+  parentId      String? // For nested sites/folders
   createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  updatedAt DateTime @updatedAt
 }
 
 model Category {
@@ -56,6 +58,7 @@ model GlobalSettings {
   theme     String   // JSON string
   searchEngine String @default("Google")
   bingCacheMode String @default("keep-all") // 'keep-all' | 'keep-daily'
+  privatePasswordHash String? // Separate password for private mode
   updatedAt DateTime @updatedAt
 }
 

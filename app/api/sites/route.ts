@@ -39,12 +39,13 @@ export async function POST(request: Request) {
         }
 
         const site = await prisma.site.create({
+
             data: {
                 id: body.id,
-                name: body.name,
-                url: body.url,
+                name: body.name || 'New Site', // Ensure string
+                // url removed here, handled at bottom
                 desc: body.desc,
-                category: body.category,
+                category: body.category || 'Other', // Ensure string
                 color: body.color,
                 icon: body.icon,
                 iconType: initialIconType,
@@ -53,10 +54,12 @@ export async function POST(request: Request) {
                 descFont: body.descFont,
                 titleColor: body.titleColor,
                 descColor: body.descColor,
-                titleSize: body.titleSize ? parseInt(body.titleSize) : null,
-                descSize: body.descSize ? parseInt(body.descSize) : null,
-                order: body.order || 0,
-                isHidden: body.isHidden || false
+                descSize: body.descSize ? parseInt(String(body.descSize)) : null,
+                order: body.order ? parseInt(String(body.order)) : 0,
+                isHidden: Boolean(body.isHidden),
+                type: body.type || 'site',
+                parentId: body.parentId || null,
+                url: body.url || (body.type === 'folder' ? '#' : ''), // Ensure string
             }
         });
 
@@ -73,6 +76,7 @@ export async function POST(request: Request) {
 
         return NextResponse.json(site);
     } catch (error) {
+        console.error('Create Site Error:', error);
         return NextResponse.json({ error: 'Failed to create site' }, { status: 500 });
     }
 }
@@ -93,7 +97,8 @@ export async function PUT(request: Request) {
                     data: {
                         order: site.order,
                         category: site.category,
-                        isHidden: site.isHidden // Added isHidden support for batch update
+                        isHidden: site.isHidden,
+                        parentId: site.parentId
                     }
                 });
             }
@@ -143,10 +148,11 @@ export async function PUT(request: Request) {
                 descFont: body.descFont,
                 titleColor: body.titleColor,
                 descColor: body.descColor,
-                titleSize: body.titleSize ? parseInt(body.titleSize) : null,
                 descSize: body.descSize ? parseInt(body.descSize) : null,
                 order: body.order,
-                isHidden: body.isHidden
+                isHidden: body.isHidden,
+                type: body.type,
+                parentId: body.parentId
             }
         });
 
@@ -168,9 +174,29 @@ export async function DELETE(request: Request) {
         const id = searchParams.get('id');
         if (!id) return NextResponse.json({ error: 'ID required' }, { status: 400 });
 
+        const deleteContents = searchParams.get('deleteContents') === 'true';
+
         const site = await prisma.site.findUnique({ where: { id } });
-        if (site && site.customIconUrl) {
-            await deleteIcon(site.customIconUrl);
+        if (site) {
+            if (site.customIconUrl) {
+                await deleteIcon(site.customIconUrl);
+            }
+
+            // Handle folder contents
+            if (deleteContents) {
+                // Delete all children (recursively? for now just children)
+                const children = await prisma.site.findMany({ where: { parentId: id } });
+                for (const child of children) {
+                    if (child.customIconUrl) await deleteIcon(child.customIconUrl);
+                }
+                await prisma.site.deleteMany({ where: { parentId: id } });
+            } else {
+                // Keep contents: Move to root (parentId = null)
+                await prisma.site.updateMany({
+                    where: { parentId: id },
+                    data: { parentId: null }
+                });
+            }
         }
 
         await prisma.site.delete({ where: { id } });

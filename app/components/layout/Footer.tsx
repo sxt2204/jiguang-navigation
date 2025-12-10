@@ -23,7 +23,7 @@ export function Footer({ isDarkMode, appConfig, isSticky }: FooterProps) {
     return (
         <footer
             className={`w-full transition-all duration-300 border-t ${isSticky ? 'fixed bottom-0 left-0 right-0 z-50 backdrop-blur-xl shadow-[0_-4px_20px_-4px_rgba(0,0,0,0.05)]' : 'relative mt-auto'} ${isDarkMode ? 'bg-slate-900/90 border-white/5 text-slate-400' : 'bg-white/90 border-slate-100 text-slate-500'}`}>
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6">
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4">
                 <div className="flex flex-col md:flex-row justify-between items-center gap-4 md:gap-8">
                     <div className="flex flex-col md:flex-row items-center gap-3 md:gap-6 text-center md:text-left">
                         <div className="flex items-center gap-2 select-none opacity-80 hover:opacity-100 transition-opacity">

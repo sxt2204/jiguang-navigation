@@ -73,6 +73,7 @@ interface SettingsPanelProps {
     setIsModalOpen: (isOpen: boolean) => void;
     setEditingSite: (site: any) => void;
     onDeleteSite: (site: any) => void;
+    searchEngine: string; // [NEW] Added for export
 }
 
 export function SettingsPanel({
@@ -98,6 +99,7 @@ export function SettingsPanel({
     setAppConfig,
     showToast,
     isWallpaperManagerOpen,
+    searchEngine, // [NEW] Destructure prop
     setIsWallpaperManagerOpen,
     setBingWallpaper,
     setIsModalOpen,
@@ -130,6 +132,66 @@ export function SettingsPanel({
         })
     );
 
+    const handleDragOver = (event: any) => {
+        const { active, over } = event;
+        if (!over) return;
+        if (active.id === over.id) return;
+
+        const isCategory = (id: any) => categories.includes(id);
+
+        // Site sorting/nesting logic
+        if (isCategory(over.id) && !isCategory(active.id)) {
+            // Dragging a site over a Category Header -> Move to Root of that Category
+            const activeSite = sites.find(s => s.id === active.id);
+            if (activeSite && activeSite.parentId) {
+                const newItems = sites.map(s => s.id === activeSite.id ? { ...s, parentId: null, category: over.id } : s);
+                setSites(newItems);
+            }
+        }
+
+        if (!isCategory(active.id) && !isCategory(over.id)) {
+            const activeSite = sites.find(s => s.id === active.id);
+            const overSite = sites.find(s => s.id === over.id);
+
+            if (!activeSite || !overSite) return;
+
+            // 1. Moving into a Folder
+            if (overSite.type === 'folder' && activeSite.type !== 'folder') {
+                // If hovering over a folder, move inside
+                if (activeSite.parentId !== overSite.id) {
+                    const newItems = sites.map(s => {
+                        if (s.id === activeSite.id) {
+                            return { ...s, parentId: overSite.id, category: overSite.category, order: 9999 }; // Append to end temporarily
+                        }
+                        return s;
+                    });
+                    setSites(newItems);
+                }
+            }
+
+            // 2. Moving out of Folder (to Root of Category) logic is tricky in List view.
+
+            // If overSite is Root and activeSite is Nested -> Move to Root (Same level as overSite).
+            if (!overSite.parentId && activeSite.parentId) {
+                // Move activeSite to Root (parentId: null)
+                const newItems = sites.map(s => s.id === activeSite.id ? { ...s, parentId: null, category: overSite.category } : s);
+                setSites(newItems);
+            }
+
+            // If overSite is Nested and activeSite is Root -> Move to Folder (Same level as overSite).
+            if (overSite.parentId && !activeSite.parentId) {
+                const newItems = sites.map(s => s.id === activeSite.id ? { ...s, parentId: overSite.parentId, category: overSite.category } : s);
+                setSites(newItems);
+            }
+
+            // If both nested in different folders?
+            if (activeSite.parentId && overSite.parentId && activeSite.parentId !== overSite.parentId) {
+                const newItems = sites.map(s => s.id === activeSite.id ? { ...s, parentId: overSite.parentId, category: overSite.category } : s);
+                setSites(newItems);
+            }
+        }
+    };
+
     const handleDragEnd = (event: DragEndEvent) => {
         const { active, over } = event;
         if (!over) return;
@@ -137,22 +199,47 @@ export function SettingsPanel({
         const isCategory = (id: any) => categories.includes(id);
 
         if (active.id !== over.id) {
+            // Category Reordering
             if (isCategory(active.id) && isCategory(over.id)) {
                 const oldIndex = categories.indexOf(active.id as string);
                 const newIndex = categories.indexOf(over.id as string);
                 moveCategory(oldIndex, newIndex);
-            } else if (!isCategory(active.id) && !isCategory(over.id)) {
-                const oldIndex = sites.findIndex(s => s.id === active.id);
-                const newIndex = sites.findIndex(s => s.id === over.id);
+                // Note: Persistence for category order is handled by `moveCategory` if it updates a persistent state.
+                // If categories are derived from sites, then site reordering will implicitly affect category order.
+                return;
+            }
+
+            // Site Reordering
+            if (!isCategory(active.id) && !isCategory(over.id)) {
+
+                const oldIndex = sites.findIndex((item) => item.id === active.id);
+                const newIndex = sites.findIndex((item) => item.id === over.id);
 
                 if (oldIndex !== -1 && newIndex !== -1) {
-                    const newSites = arrayMove(sites, oldIndex, newIndex);
-                    const updatedSites = newSites.map((site, index) => ({ ...site, order: index }));
-                    setSites(updatedSites);
+                    const reordered = arrayMove(sites, oldIndex, newIndex).map((site: any, index: number) => ({
+                        ...site,
+                        order: index // Update order based on new position
+                    }));
+
+                    setSites(reordered);
+
+                    // Persist immediately
+                    fetch('/api/sites', {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(reordered)
+                    }).catch(e => {
+                        showToast('排序保存失败', 'error');
+                        console.error(e);
+                    });
                 }
             }
         }
     };
+
+    // ...
+
+
 
     const handleSyncBing = async () => {
         try {
@@ -215,6 +302,7 @@ export function SettingsPanel({
             config: appConfig,
             hiddenCategories, // Export hidden state
             theme: { isDarkMode }, // Export theme
+            searchEngine, // [NEW] Export Search Engine
             customFonts, // Export custom fonts
             todos, // Export todos
             countdowns // Export countdowns
@@ -794,6 +882,7 @@ export function SettingsPanel({
                                                                         bgScale: v
                                                                     })} />
                                                             </div>
+
                                                             <div className={`p-3 rounded-xl border transition-all hover:border-indigo-500/50 ${isDarkMode ? 'bg-white/5 border-white/5' : 'bg-slate-50 border-slate-100'}`}>
                                                                 <RangeControl label="遮罩浓度"
                                                                     value={layoutSettings.bgOpacity}
@@ -873,13 +962,48 @@ export function SettingsPanel({
                                 <div className="space-y-4"><h4 className="text-base font-bold opacity-80">卡片样式</h4>
                                     <div className="grid grid-cols-2 gap-3">
                                         <div className={`p-3 rounded-xl border transition-all hover:border-indigo-500/50 ${isDarkMode ? 'bg-white/5 border-white/5' : 'bg-slate-50 border-slate-100'}`}>
-                                            <RangeControl label="卡片高度" value={layoutSettings.cardHeight} min={80} max={160}
+                                            <RangeControl label="卡片高度" value={layoutSettings.cardHeight} min={20} max={160}
                                                 onChange={(v: number) => setLayoutSettings({ ...layoutSettings, cardHeight: v })} unit="px" />
                                         </div>
                                         <div className={`p-3 rounded-xl border transition-all hover:border-indigo-500/50 ${isDarkMode ? 'bg-white/5 border-white/5' : 'bg-slate-50 border-slate-100'}`}>
-                                            <RangeControl label="每行数量" value={layoutSettings.gridCols} min={3} max={8}
-                                                onChange={(v: number) => setLayoutSettings({ ...layoutSettings, gridCols: v })} />
+                                            <RangeControl label="卡片圆角" value={layoutSettings.cardRadius ?? 16} min={0} max={32}
+                                                onChange={(v: number) => setLayoutSettings({ ...layoutSettings, cardRadius: v })} unit="px" />
                                         </div>
+
+                                        {/* Layout Mode Toggle */}
+                                        <div className={`p-3 rounded-xl border transition-all hover:border-indigo-500/50 ${isDarkMode ? 'bg-white/5 border-white/5' : 'bg-slate-50 border-slate-100'}`}>
+                                            <div className="flex items-center justify-between mb-2">
+                                                <Label className="cursor-pointer font-medium">布局模式</Label>
+                                                <div className={`flex items-center p-1 rounded-lg ${isDarkMode ? 'bg-black/20' : 'bg-slate-200'}`}>
+                                                    <button
+                                                        onClick={() => setLayoutSettings({ ...layoutSettings, gridMode: 'auto' })}
+                                                        className={`px-2 py-1 text-xs rounded-md transition-all ${(!layoutSettings.gridMode || layoutSettings.gridMode === 'auto') ? 'bg-white text-indigo-600 shadow-sm' : 'opacity-50'}`}
+                                                    >自动宽度</button>
+                                                    <button
+                                                        onClick={() => setLayoutSettings({ ...layoutSettings, gridMode: 'fixed' })}
+                                                        className={`px-2 py-1 text-xs rounded-md transition-all ${layoutSettings.gridMode === 'fixed' ? 'bg-white text-indigo-600 shadow-sm' : 'opacity-50'}`}
+                                                    >固定列数</button>
+                                                </div>
+                                            </div>
+                                            <p className="text-[10px] opacity-60">
+                                                {(!layoutSettings.gridMode || layoutSettings.gridMode === 'auto')
+                                                    ? '卡片保持设定宽度，自动计算每行数量'
+                                                    : '每行固定显示指定数量的卡片，宽度自适应'}
+                                            </p>
+                                        </div>
+
+                                        {/* Conditional Sliders based on Mode */}
+                                        {(!layoutSettings.gridMode || layoutSettings.gridMode === 'auto') ? (
+                                            <div className={`p-3 rounded-xl border transition-all hover:border-indigo-500/50 ${isDarkMode ? 'bg-white/5 border-white/5' : 'bg-slate-50 border-slate-100'}`}>
+                                                <RangeControl label="卡片宽度 (目标)" value={layoutSettings.cardWidth || 260} min={160} max={400}
+                                                    onChange={(v: number) => setLayoutSettings({ ...layoutSettings, cardWidth: v })} unit="px" />
+                                            </div>
+                                        ) : (
+                                            <div className={`p-3 rounded-xl border transition-all hover:border-indigo-500/50 ${isDarkMode ? 'bg-white/5 border-white/5' : 'bg-slate-50 border-slate-100'}`}>
+                                                <RangeControl label="每行数量" value={layoutSettings.gridCols} min={1} max={12}
+                                                    onChange={(v: number) => setLayoutSettings({ ...layoutSettings, gridCols: v })} />
+                                            </div>
+                                        )}
                                         <div className={`p-3 rounded-xl border transition-all hover:border-indigo-500/50 ${isDarkMode ? 'bg-white/5 border-white/5' : 'bg-slate-50 border-slate-100'}`}>
                                             <RangeControl label="网格间距" value={layoutSettings.gap} min={2} max={8}
                                                 onChange={(v: number) => setLayoutSettings({ ...layoutSettings, gap: v })} />
@@ -1192,7 +1316,7 @@ export function SettingsPanel({
                                 <div className="space-y-4">
                                     <NewCategoryInput onAdd={handleAddCategory} isDarkMode={isDarkMode} />
                                     <div className="space-y-2">
-                                        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+                                        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragOver={handleDragOver} onDragEnd={handleDragEnd}>
                                             <SortableContext items={categories} strategy={verticalListSortingStrategy}>
                                                 {categories.map((cat: string, idx: number) => (
                                                     <SortableCategoryItem key={cat} id={cat}>
@@ -1241,40 +1365,36 @@ export function SettingsPanel({
                                                             {/* Expanded Site List */}
                                                             {expandedCategories.includes(cat) && (
                                                                 <div className="mt-3 pl-8 pr-2 animate-in slide-in-from-top-2 fade-in duration-200">
+                                                                    {/* Only render Root sites here. Nested handled by SortableSiteItem */}
                                                                     <SortableContext
-                                                                        items={sites.filter((s: any) => s.category === cat).map((s: any) => s.id)}
+                                                                        items={sites.filter((s: any) => s.category === cat && !s.parentId).map((s: any) => s.id)}
                                                                         strategy={verticalListSortingStrategy}
                                                                     >
                                                                         <div className="space-y-1">
-                                                                            {sites.filter((s: any) => s.category === cat).map((site: any) => (
+                                                                            {sites.filter((s: any) => s.category === cat && !s.parentId).map((site: any) => (
                                                                                 <SortableSiteItem
                                                                                     key={site.id}
                                                                                     site={site}
+                                                                                    sites={sites} /* PASS SITES HERE */
                                                                                     isDarkMode={isDarkMode}
                                                                                     onEdit={() => {
                                                                                         setEditingSite(site);
                                                                                         setIsModalOpen(true);
                                                                                     }}
-                                                                                    onDelete={() => {
-                                                                                        // We need a helper to confirm delete site. 
-                                                                                        // Currently handleDeleteCategory uses setConfirmingDeleteCategory used in page.tsx
-                                                                                        // SettingsPanel needs a callback for delete site?
-                                                                                        // Ah, SettingsPanel doesn't have onDeleteSite prop.
-                                                                                        // But wait, page.tsx handles confirmation modals.
-                                                                                        // SettingsPanel needs to be able to setConfirmingDeleteSite in page.tsx
-                                                                                        // I forgot to pass that prop!
-                                                                                        // Use a hack or add another prop.
-                                                                                        onDeleteSite(site);
+                                                                                    onDelete={(siteOrEvent: any) => {
+                                                                                        // If event or site is passed, handle correctly.
+                                                                                        // SortableSiteItem passes the site object itself in my new implementation.
+                                                                                        onDeleteSite(siteOrEvent);
                                                                                     }}
-                                                                                    onToggleHidden={() => {
-                                                                                        const updated = { ...site, isHidden: !site.isHidden };
-                                                                                        setSites(sites.map(s => s.id === site.id ? updated : s));
-                                                                                        // Sync will pick this up
+                                                                                    onToggleHidden={(s: any) => {
+                                                                                        const target = s.id ? s : site;
+                                                                                        const updated = { ...target, isHidden: !target.isHidden };
+                                                                                        setSites(sites.map(s => s.id === target.id ? updated : s));
                                                                                     }}
                                                                                 />
                                                                             ))}
-                                                                            {sites.filter((s: any) => s.category === cat).length === 0 && (
-                                                                                <div className="text-xs text-center py-2 opacity-50 border border-dashed rounded-lg">暂无站点</div>
+                                                                            {sites.filter((s: any) => s.category === cat && !s.parentId).length === 0 && (
+                                                                                <div className="text-xs text-center py-2 opacity-50 border border-dashed rounded-lg">暂无根站点</div>
                                                                             )}
                                                                         </div>
                                                                     </SortableContext>
@@ -1300,6 +1420,54 @@ export function SettingsPanel({
                                         </div>
                                         <Switch id="private-mode" checked={appConfig.privateMode || false} onCheckedChange={(c) => setAppConfig({ ...appConfig, privateMode: c })} />
                                     </div>
+
+                                    {/* Private Password Setting */}
+                                    {appConfig.privateMode && (
+                                        <div className={`p-4 rounded-xl border animate-in slide-in-from-top-2 ${isDarkMode ? 'bg-indigo-500/10 border-indigo-500/20' : 'bg-indigo-50 border-indigo-100'}`}>
+                                            <div className="space-y-3">
+                                                <div className="flex items-center gap-2">
+                                                    <Lock size={16} className="text-indigo-500" />
+                                                    <span className="text-sm font-bold text-indigo-500">访问密码</span>
+                                                </div>
+                                                <div className="flex gap-2">
+                                                    <Input
+                                                        type="password"
+                                                        placeholder="设置独立访问密码 (留空则使用管理员密码)"
+                                                        className="bg-white dark:bg-slate-900"
+                                                        onChange={(e) => {
+                                                            // Storing in a ref or local state would be better, but for simplicity:
+                                                            // We'll use a local state or just fire immediately on blur / button click.
+                                                            // Let's add a "Save" button for this specific field or use a local state.
+                                                            // Since SettingsPanel is large, let's use a local variable inside the component logic above, but here I am inside JSX.
+                                                            // I'll add a small inner form or just an input with a button.
+                                                        }}
+                                                        id="private-pwd-input"
+                                                    />
+                                                    <Button onClick={async () => {
+                                                        const input = document.getElementById('private-pwd-input') as HTMLInputElement;
+                                                        const val = input.value;
+                                                        try {
+                                                            showToast('正在更新密码...', 'loading');
+                                                            const res = await fetch('/api/auth/private/update', {
+                                                                method: 'PUT',
+                                                                headers: { 'Content-Type': 'application/json' },
+                                                                body: JSON.stringify({ password: val })
+                                                            });
+                                                            if (res.ok) {
+                                                                showToast('访问密码已更新', 'success');
+                                                                input.value = '';
+                                                            } else {
+                                                                showToast('更新失败', 'error');
+                                                            }
+                                                        } catch (e) { showToast('请求出错', 'error'); }
+                                                    }}>更新</Button>
+                                                </div>
+                                                <p className="text-[10px] opacity-60">
+                                                    注意：设置为空将清除独立密码，恢复使用管理员密码验证。
+                                                </p>
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
 
                                 <Separator className={isDarkMode ? 'bg-white/10' : 'bg-slate-200'} />

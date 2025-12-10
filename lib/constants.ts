@@ -144,6 +144,7 @@ export const ICON_MAP: any = {
 
 export const DEFAULT_LAYOUT_SETTINGS = {
     cardHeight: 100,
+    cardWidth: 260, // Min width for responsive grid
     gridCols: 4,
     gap: 5,
     glassOpacity: 70,

@@ -11,7 +11,7 @@ import {
   Type, Link as LinkIcon, Layout, HardDrive, Lock, User, Users, Clock, RefreshCw, // Added Users icon
   AlertTriangle, CheckCircle2, XCircle, CloudRain, CloudSnow, CloudLightning,
   SunMedium, Wind, Image as WallpaperIcon, ImagePlus, Hash, MapPin, Sparkles, Check, Command,
-  Move, Terminal, Droplet, PaintBucket, ZoomIn, GripVertical
+  Move, Terminal, Droplet, PaintBucket, ZoomIn, GripVertical, ChevronRight
 } from 'lucide-react';
 import { AuroraBackground } from '@/app/components/AuroraBackground';
 import { FontManager } from '@/app/components/layout/FontManager';
@@ -50,7 +50,8 @@ import {
   useSensors,
   DragOverlay,
   DragStartEvent,
-  DragEndEvent
+  DragEndEvent,
+  useDroppable
 } from '@dnd-kit/core';
 import {
   arrayMove,
@@ -84,8 +85,32 @@ import {
 } from '@/lib/constants';
 
 // --- IMPORTED DATA FROM JSON ---
-const INITIAL_CATEGORIES: string[] = [];
 const INITIAL_SITES: any[] = [];
+const INITIAL_CATEGORIES: string[] = [];
+
+function DroppableHomeBreadcrumb({ onClick, isDarkMode, children }: any) {
+  const { setNodeRef, isOver } = useDroppable({
+    id: 'breadcrumb-home',
+  });
+
+  return (
+    <div
+      ref={setNodeRef}
+      onClick={onClick}
+      className={`
+        flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold transition-all duration-200 border cursor-pointer select-none
+        ${isOver
+          ? 'bg-green-100 border-green-300 text-green-700 shadow-md scale-105 ring-2 ring-green-200'
+          : (isDarkMode
+            ? 'bg-indigo-500/20 border-indigo-500/20 text-indigo-300 hover:bg-indigo-500/30 hover:border-indigo-500/40'
+            : 'bg-white border-slate-200 text-slate-600 hover:text-indigo-600 hover:border-indigo-200 hover:bg-indigo-50 hover:shadow-sm')
+        }
+      `}
+    >
+      {children}
+    </div>
+  );
+}
 
 
 export default function AuroraNav() {
@@ -106,6 +131,10 @@ export default function AuroraNav() {
     message: '',
     type: 'success'
   });
+  const [currentFolderId, setCurrentFolderId] = useState<string | null>(null);
+  const [deleteContents, setDeleteContents] = useState(false);
+  const [deleteSite, setDeleteSite] = useState<any>(null);
+  const [isConfirmationOpen, setIsConfirmationOpen] = useState(false);
   const [bingQuality, setBingQuality] = useState('uhd');
   const { allFonts } = useFonts();
 
@@ -114,6 +143,18 @@ export default function AuroraNav() {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchSuggestions, setSearchSuggestions] = useState<string[]>([]);
   const [currentEngineId, setCurrentEngineId] = useState('local');
+
+  const fetchSites = useCallback(async () => {
+    try {
+      const res = await fetch('/api/sites');
+      if (res.ok) {
+        const data = await res.json();
+        setSites(data);
+      }
+    } catch (e) {
+      console.error('Failed to fetch sites');
+    }
+  }, []);
   const [isEngineMenuOpen, setIsEngineMenuOpen] = useState(false);
   const [isSearchFocused, setIsSearchFocused] = useState(false);
   const [isScrolled, setIsScrolled] = useState(false);
@@ -130,7 +171,6 @@ export default function AuroraNav() {
   const [isWallpaperManagerOpen, setIsWallpaperManagerOpen] = useState(false);
   const [editingSite, setEditingSite] = useState<any>(null);
   const [confirmingDeleteCategory, setConfirmingDeleteCategory] = useState<string | null>(null);
-  const [confirmingDeleteSite, setConfirmingDeleteSite] = useState<any>(null);
   const [confirmingDeleteHtmlSection, setConfirmingDeleteHtmlSection] = useState<any>(null);
   const [activeSettingTab, setActiveSettingTab] = useState('layout');
   const [isGuestVerified, setIsGuestVerified] = useState(false); // 访客是否已验证密码
@@ -181,6 +221,8 @@ export default function AuroraNav() {
           setSearchQuery('');
           setIsSearchFocused(false);
           searchInputRef.current?.blur();
+        } else if (currentFolderId) {
+          setCurrentFolderId(null); // Exit folder
         }
         setIsSettingsOpen(false);
         setIsModalOpen(false);
@@ -192,7 +234,7 @@ export default function AuroraNav() {
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isSearchFocused, contextMenu]);
+  }, [isSearchFocused, contextMenu, currentFolderId]);
 
   // --- Init & Persistence ---
   // --- Init & Persistence ---
@@ -626,10 +668,79 @@ export default function AuroraNav() {
     const oldIndex = visualSites.findIndex((item) => String(item.id) === String(active.id));
     const newIndex = visualSites.findIndex((item) => String(item.id) === String(over.id));
 
+    // --- BREADCRUMB DROP LOGIC (Move Out) ---
+    // Note: over.id for breadcrumb is 'breadcrumb-home'. Not an index in visualSites.
+    // If over.id === 'breadcrumb-home'
+    if (over.id === 'breadcrumb-home' && currentFolderId) {
+      // Need to look up active from sites
+      const realActive = sites.find(s => s.id === active.id);
+      if (!realActive) return;
+
+      const newSites = sites.map(s => s.id === active.id ? { ...s, parentId: null } : s);
+      setSites(newSites);
+      showToast('已移出文件夹', 'success');
+
+      try {
+        await fetch('/api/sites', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...realActive, parentId: null })
+        });
+      } catch (e) {
+        showToast('移动失败', 'error');
+      }
+      return;
+    }
+
     if (oldIndex === -1 || newIndex === -1) return;
 
     const activeItem = visualSites[oldIndex];
     const overItem = visualSites[newIndex];
+
+    // --- FOLDER DROP LOGIC ---
+    // If dropping a SITE onto a FOLDER (that is not itself), move it inside.
+    // Ensure we are not dropping a folder into another folder (nested folders not fully supported/tested yet, but schema allows)
+    // For now, let's allow site -> folder.
+    // NOTE: 'overItem' is the item being hovered. 'activeItem' is the dragged item.
+    if (overItem.type === 'folder' && activeItem.id !== overItem.id && activeItem.type !== 'folder') {
+      const isAlreadyChild = activeItem.parentId === overItem.id;
+      if (!isAlreadyChild) {
+        // Move activeItem INTO overItem
+        // 1. Update activeItem: parentId = overItem.id, category = overItem.category (optional, but good for data consistency if displayed flattened)
+        const updatedActive = { ...activeItem, parentId: overItem.id, category: overItem.category };
+
+        // 2. Remove activeItem from current view (since it entered the folder)
+        // Or just update state and let filtering handle it.
+        // But we need to update the 'sites' state array.
+
+        const newSites = sites.map(s => s.id === activeItem.id ? updatedActive : s);
+        setSites(newSites);
+        showToast(`已移动到 "${overItem.name}"`, 'success');
+
+        // 3. Persist
+        try {
+          // Single Update for the moved item is enough? No, we might mess up order if we rely on full list sync.
+          // But handleDragEnd usually does a full sync.
+          // Let's do a single PUT for the moved item or full sync?
+          // Full sync is safer for order, but here we changed parentId.
+          // Let's just update the single item via API for efficiency? 
+          // Wait, our API for PUT /api/sites expects an array for reordering OR a single object for update?
+          // Looking at route.ts (not visible here, but usually PUT array = reorder, PUT object = update)
+          // Actually previous code uses PUT with array for reorder.
+          // And PUT with body { ...data, id } for edit.
+          // So we should call PUT with the updated single item to change parentId.
+          await fetch('/api/sites', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(updatedActive)
+          });
+        } catch (e) {
+          console.error("Failed to move to folder", e);
+          showToast("移动失败", "error");
+        }
+        return; // Stop standard reordering
+      }
+    }
 
     // 3. Handle Category Change
     let newItem = { ...activeItem };
@@ -700,6 +811,7 @@ export default function AuroraNav() {
       // New Fields
       if (data.hiddenCategories) setHiddenCategories(data.hiddenCategories);
       if (data.theme && typeof data.theme.isDarkMode === 'boolean') setIsDarkMode(data.theme.isDarkMode);
+      if (data.searchEngine) setSearchEngine(data.searchEngine); // Restore Search Engine
 
       // Restore Custom Fonts
       if (data.customFonts && Array.isArray(data.customFonts)) {
@@ -741,18 +853,33 @@ export default function AuroraNav() {
   };
 
   const filteredSites = useMemo(() => {
-    return sites.filter(site => {
-      if (hiddenCategories.includes(site.category)) return false;
-      const matchesCategory = activeTab === '全部' || site.category === activeTab;
+    let result = sites;
 
-      // Modified: Only filter if engine is local
-      const text = (site.name + site.desc).toLowerCase();
-      const isLocalSearch = currentEngineId === 'local';
-      const matchesSearch = isLocalSearch ? text.includes(searchQuery.toLowerCase()) : true;
+    if (searchQuery) {
+      result = sites.filter((site: any) =>
+        site.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        site.url?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        site.desc?.toLowerCase().includes(searchQuery.toLowerCase())
+      );
+    } else {
+      // If not searching, filter by folder level
+      result = result.filter((s: any) => {
+        if (currentFolderId) {
+          return s.parentId === currentFolderId;
+        } else {
+          return !s.parentId;
+        }
+      });
 
-      return matchesCategory && matchesSearch;
-    });
-  }, [sites, activeTab, searchQuery, hiddenCategories, currentEngineId]);
+      if (activeTab !== '全部') {
+        result = result.filter((site: any) => site.category === activeTab);
+      }
+    }
+
+    if (!appConfig.privateMode) return result;
+    if (isGuestVerified) return result;
+    return result.filter((site: any) => !site.isHidden);
+  }, [sites, searchQuery, activeTab, appConfig.privateMode, isGuestVerified, currentFolderId]);
 
   const activeDragSite = activeDragId ? sites.find(s => s.id === activeDragId) : null;
   const containerClass = layoutSettings.isWideMode ? 'max-w-[98%] px-6' : 'max-w-7xl px-4';
@@ -809,17 +936,20 @@ export default function AuroraNav() {
                 isDarkMode={isDarkMode}
                 onVerify={async (password: string) => {
                   try {
-                    const res = await fetch('/api/auth/login', {
+                    const res = await fetch('/api/auth/private/verify', {
                       method: 'POST',
                       headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ username: 'admin', password })
+                      body: JSON.stringify({ password })
                     });
                     if (res.ok) {
-                      setIsGuestVerified(true);
-                      if (typeof window !== 'undefined') {
-                        sessionStorage.setItem('aurora_guest_verified', 'true');
+                      const data = await res.json();
+                      if (data.success) {
+                        setIsGuestVerified(true);
+                        if (typeof window !== 'undefined') {
+                          sessionStorage.setItem('aurora_guest_verified', 'true');
+                        }
+                        return true;
                       }
-                      return true;
                     }
                     return false;
                   } catch {
@@ -939,6 +1069,7 @@ export default function AuroraNav() {
                         setIsWallpaperManagerOpen={setIsWallpaperManagerOpen}
                         activeTab={activeSettingTab}
                         setActiveTab={setActiveSettingTab}
+                        searchEngine={searchEngine} // [NEW] Pass searchEngine
                         layoutSettings={layoutSettings}
                         setLayoutSettings={setLayoutSettings}
                         categories={categories}
@@ -981,16 +1112,50 @@ export default function AuroraNav() {
                         setBingWallpaper={setBingWallpaper}
                         setIsModalOpen={setIsModalOpen}
                         setEditingSite={setEditingSite}
-                        onDeleteSite={(site: any) => setConfirmingDeleteSite(site)}
+                        onDeleteSite={(site: any) => {
+                          setDeleteSite(site);
+                          setDeleteContents(false);
+                          setIsConfirmationOpen(true);
+                        }}
                       />
                     )}
 
                     {/* Site Grid */}
                     <div className={layoutSettings.compactMode ? 'space-y-4' : 'space-y-10'}>
+                      {/* Breadcrumbs for Folder Navigation */}
+                      {currentFolderId && (
+                        <div className="mb-4 flex items-center gap-2 text-sm animate-in slide-in-from-left-2 fade-in duration-300">
+
+                          <DroppableHomeBreadcrumb
+                            onClick={() => setCurrentFolderId(null)}
+                            isDarkMode={isDarkMode}
+                          >
+                            <HardDrive size={14} className="mr-1.5" /> 首页
+                          </DroppableHomeBreadcrumb>
+
+                          {(() => {
+                            // Simple breadcrumb for 1 level deep for now
+                            const currentFolder = sites.find(s => s.id === currentFolderId);
+                            return (
+                              <>
+                                <ChevronRight size={14} className="text-slate-400 opacity-60" />
+                                <div className={`px-3 py-1.5 rounded-full text-xs font-bold border select-none transition-colors
+                                    ${isDarkMode
+                                    ? 'bg-white/5 border-white/5 text-slate-200 shadow-sm'
+                                    : 'bg-white border-slate-200 text-slate-700 shadow-sm'
+                                  }`}>
+                                  {currentFolder?.name || 'Folder'}
+                                </div>
+                              </>
+                            );
+                          })()}
+                        </div>
+                      )}
+
                       <SiteGrid
                         isLoading={isLoading}
                         filteredSites={filteredSites}
-                        isSearching={isSearching}
+                        isSearching={!!searchQuery}
                         activeTab={activeTab}
                         categories={categories}
                         hiddenCategories={hiddenCategories}
@@ -1001,9 +1166,14 @@ export default function AuroraNav() {
                           setEditingSite(site);
                           setIsModalOpen(true);
                         }}
-                        onDelete={(site: any) => setConfirmingDeleteSite(site)}
+                        onDelete={(site: any) => {
+                          setDeleteSite(site);
+                          setDeleteContents(false);
+                          setIsConfirmationOpen(true);
+                        }}
                         onContextMenu={handleContextMenu}
                         getCategoryColor={getCategoryColor}
+                        onFolderClick={(folder: any) => setCurrentFolderId(folder.id)}
                       />
                     </div>
                   </main>
@@ -1102,9 +1272,32 @@ export default function AuroraNav() {
               className={`w-full text-left px-4 py-2.5 text-sm flex items-center gap-2 active:scale-95 transition-transform ${isDarkMode ? 'hover:bg-white/10' : 'hover:bg-slate-50'}`}>
               <Copy size={14} />复制链接
             </button>
+            {currentFolderId && (
+              <button onClick={async () => {
+                const siteId = contextMenu.siteId;
+                if (!siteId) return;
+                const site = sites.find(s => s.id === siteId);
+                // Optimistic
+                setSites(prev => prev.map(s => s.id === siteId ? { ...s, parentId: null } : s));
+                setContextMenu({ ...contextMenu, visible: false });
+                showToast('已移出文件夹', 'success');
+                try {
+                  await fetch('/api/sites', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ ...site, parentId: null })
+                  });
+                } catch (e) { showToast('移动失败', 'error'); }
+              }}
+                className={`w-full text-left px-4 py-2.5 text-sm flex items-center gap-2 active:scale-95 transition-transform ${isDarkMode ? 'hover:bg-white/10' : 'hover:bg-slate-50'}`}>
+                <ArrowUp size={14} />移出文件夹
+              </button>
+            )}
             <div className={`h-px my-1 ${isDarkMode ? 'bg-white/10' : 'bg-slate-100'}`}></div>
             <button onClick={() => {
-              setConfirmingDeleteSite(sites.find(s => s.id === contextMenu.siteId));
+              setDeleteSite(sites.find(s => s.id === contextMenu.siteId));
+              setDeleteContents(false);
+              setIsConfirmationOpen(true);
               setContextMenu({ ...contextMenu, visible: false });
             }}
               className="w-full text-left px-4 py-2.5 text-sm flex items-center gap-2 text-red-500 hover:bg-red-500/10 active:scale-95 transition-transform">
@@ -1113,7 +1306,7 @@ export default function AuroraNav() {
           </div>
         )}
         <AnimatePresence>
-          {isModalOpen && <EditModal key="edit-modal" site={editingSite} categories={categories} isDarkMode={isDarkMode} settings={layoutSettings}
+          {isModalOpen && <EditModal key="edit-modal" site={editingSite} categories={categories} sites={sites} isDarkMode={isDarkMode} settings={layoutSettings}
             onClose={() => setIsModalOpen(false)} onSave={async (data: any) => {
 
               try {
@@ -1167,22 +1360,46 @@ export default function AuroraNav() {
               showToast('删除请求失败', 'error');
             }
           }} />}
-        {confirmingDeleteSite && <ConfirmationModal isOpen={true} title="删除站点"
-          message={`确定要删除 "${confirmingDeleteSite.name}" 吗？`}
-          isDarkMode={isDarkMode}
-          onCancel={() => setConfirmingDeleteSite(null)}
+
+        <ConfirmationModal
+          isOpen={isConfirmationOpen}
+          onCancel={() => setIsConfirmationOpen(false)}
           onConfirm={async () => {
-            try {
-              const res = await fetch(`/api/sites?id=${confirmingDeleteSite.id}`, { method: 'DELETE' });
-              if (res.ok) {
-                setSites(prev => prev.filter(s => s.id !== confirmingDeleteSite.id));
-                setConfirmingDeleteSite(null);
-                showToast('站点已删除', 'success');
-              } else showToast('删除失败', 'error');
-            } catch (e) {
-              showToast('删除失败', 'error');
+            if (deleteSite) {
+              try {
+                const res = await fetch(`/api/sites?id=${deleteSite.id}&deleteContents=${deleteContents}`, { method: 'DELETE' });
+                if (res.ok) {
+                  // Optimistic update:
+                  // 1. Remove the deleted site/folder
+                  // 2. If it was a folder and we kept contents, move children to root (parentId = null)
+                  setSites(prev => {
+                    const filtered = prev.filter(s => s.id !== deleteSite.id);
+                    if (deleteSite.type === 'folder' && !deleteContents) {
+                      return filtered.map(s => s.parentId === deleteSite.id ? { ...s, parentId: null } : s);
+                    }
+                    return filtered;
+                  });
+                  await fetchSites();
+                  showToast('已删除', 'success');
+                } else {
+                  showToast('删除失败', 'error');
+                }
+              } catch (error) {
+                console.error('Delete failed', error);
+                showToast('请求出错', 'error');
+              }
             }
-          }} />}
+            setIsConfirmationOpen(false);
+            setDeleteSite(null);
+          }}
+          isDarkMode={isDarkMode}
+          isDeletingFolder={deleteSite?.type === 'folder'}
+          deleteContents={deleteContents}
+          setDeleteContents={setDeleteContents}
+          title={deleteSite?.type === 'folder' ? '删除文件夹' : undefined}
+          message={deleteSite?.type === 'folder' ? '要删除这个文件夹吗？' : undefined}
+          confirmText={deleteSite?.type === 'folder' ? '确定删除' : undefined}
+        />
         {confirmingDeleteHtmlSection && <ConfirmationModal isOpen={true} title="删除区域"
           message="确定要删除此 HTML 内容区域吗？操作无法撤销。"
           isDarkMode={isDarkMode}

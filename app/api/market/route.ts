@@ -10,6 +10,55 @@ const SYMBOLS = [
 export async function GET() {
     try {
         const promises = SYMBOLS.map(async (item) => {
+            // Special handling for A-Share using Sina API for better accuracy
+            if (item.id === 'ashare') {
+                try {
+                    const response = await fetch('http://hq.sinajs.cn/list=sh000001', {
+                        headers: { 'Referer': 'https://finance.sina.com.cn/' },
+                        next: { revalidate: 30 }
+                    });
+
+                    if (!response.ok) throw new Error('Sina API failed');
+
+                    const text = await response.text();
+                    const matches = text.match(/="(.*)";/);
+
+                    if (matches && matches[1]) {
+                        const parts = matches[1].split(',');
+                        const open = parseFloat(parts[1]);
+                        const previousClose = parseFloat(parts[2]);
+                        const price = parseFloat(parts[3]);
+
+                        // Valid data check
+                        if (price > 0 && previousClose > 0) {
+                            const change = price - previousClose;
+                            const percent = (change / previousClose) * 100;
+
+                            console.log(`[MarketAPI] Sina ${item.symbol}:`, { price, change, percent });
+
+                            return {
+                                id: item.id,
+                                name: item.name,
+                                symbol: item.symbol,
+                                price,
+                                change,
+                                percent,
+                                type: item.type,
+                                currency: 'CNY',
+                            };
+                        }
+                    }
+                    throw new Error('Sina API invalid data');
+                } catch (error) {
+                    console.error(`Error fetching Sina ${item.symbol}:`, error);
+                    // Fallback to Yahoo if Sina fails? Or just return error.
+                    // Let's allow it to fall through to Yahoo logic below if we want fallback, 
+                    // but for now, let's just return error or maybe continue to Yahoo?
+                    // To keep it simple and robust, let's try Yahoo as fallback if Sina fails.
+                    console.log('Falling back to Yahoo for ashare...');
+                }
+            }
+
             try {
                 const response = await fetch(
                     `https://query1.finance.yahoo.com/v8/finance/chart/${item.symbol}?interval=1d&range=1d`,

@@ -36,16 +36,31 @@ Built with the latest web technologies, it offers a stunning visual experience w
 - **Typography System**: Global font customization with smart inheritance.  
   **排版系统**：全局字体自定义，支持智能继承与系统字体回退。
 
+- **Card Styles**: Adjustable card corner radius (0-24px) & unified folder iconography.  
+  **卡片样式**：支持卡片圆角自由调节（0-24px），并采用统一的精致文件夹图标设计。
+
+- **Pill-style UI**: Interactive chip-style elements for breadcrumbs and tags.  
+  **胶囊 UI**：面包屑导航及标签采用现代化的胶囊风格设计，交互感更强。
+
 ### 🧭 Navigation & Organization | 导航与整理
 
-- **Site Management**: Add, edit, delete, and drag-and-drop sites.  
-  **站点管理**：轻松添加、编辑、删除站点，支持拖拽排序。
+- **Site Management**: Drag-and-drop sorting, infinite nested folders, and batch organization.  
+  **站点管理**：支持拖拽排序、无限层级文件夹嵌套以及批量管理。
+  - *Drag to Folder*: Drop sites directly into folder cards.  
+    *拖拽归档*：直接将站点拖入文件夹卡片即可归档。
+  - *Context Menu*: "Move out of folder" option for quick reorganization.  
+    *右键移出*：提供“移出文件夹”选项，快速调整层级。
 
 - **Category System**: Custom categories with visibility control and auto-colors.  
   **分类系统**：自定义分类，支持隐藏/显示及自动分配主题色。
 
-- **Smart Search**: Local filtering and multi-engine support (Google, Bing, etc.).  
-  **智能搜索**：实时筛选本地站点，支持切换多种搜索引擎。
+- **Smart Search**: Local filtering and multi-engine support (Persistence enabled).  
+  **智能搜索**：实时筛选本地站点，支持切换多种搜索引擎并自动记忆您的偏好。
+
+- **Breadcrumb Navigation**: Interactive pill-style breadcrumbs for folder navigation.  
+  **面包屑导航**：交互式胶囊面包屑。
+  - *Drag Support*: Drop items onto the "Home" breadcrumb to move them out of folders.  
+    *拖拽支持*：支持将项目拖拽至“首页”面包屑以快速移出文件夹。
 
 ### 🧩 HTML5 Widgets | HTML5 组件
 
@@ -69,8 +84,8 @@ Built with the latest web technologies, it offers a stunning visual experience w
 - **Icon System**: Auto-fetch favicons, upload images, or use built-in icons.  
   **图标系统**：自动抓取图标，支持上传图片或使用内置图标库。
 
-- **Data Management**: Import/Export configuration and batch sync icons.  
-  **数据管理**：一键导入/导出配置，后台批量同步图标缓存。
+- **Data Management**: One-click Full Import/Export (including Search Engine & Layout) and batch icon sync.  
+  **数据管理**：一键全量导入/导出（含搜索引擎与布局配置），后台批量同步图标缓存。
 
 ### 🔒 Privacy & Access Control | 隐私与访问控制
 

@@ -10,7 +10,7 @@ import { ICON_MAP, FONTS } from '@/lib/constants';
 import { useFonts } from '@/app/hooks/useFonts';
 import { FontPickerModal } from '@/app/components/modals/FontPickerModal';
 
-export function EditModal({ site, categories, isDarkMode, onClose, onSave, settings }: any) {
+export function EditModal({ site, categories, sites, isDarkMode, onClose, onSave, settings }: any) {
     const [f, setF] = useState({
         name: '',
         url: '',
@@ -26,7 +26,9 @@ export function EditModal({ site, categories, isDarkMode, onClose, onSave, setti
         descFont: '',
         titleSize: '',
         descSize: '',
-        isHidden: false
+        isHidden: false,
+        type: 'site',
+        parentId: ''
     });
     const [isCatOpen, setIsCatOpen] = useState(false);
     const [isFontPickerOpen, setIsFontPickerOpen] = useState(false);
@@ -35,7 +37,7 @@ export function EditModal({ site, categories, isDarkMode, onClose, onSave, setti
     const lastFetchedUrl = useRef<string>('');
 
     useEffect(() => {
-        if (site) setF({ ...site, iconType: site.iconType || 'auto', isHidden: site.isHidden || false });
+        if (site) setF({ ...site, iconType: site.iconType || 'auto', isHidden: site.isHidden || false, type: site.type || 'site', parentId: site.parentId || '' });
     }, [site]);
 
     const inputClass = `w-full rounded-xl px-3 py-2.5 text-sm border transition-all focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none ${isDarkMode ? 'bg-slate-800/50 border-white/10 placeholder:text-slate-500' : 'bg-slate-50 border-slate-200 placeholder:text-slate-400'}`;
@@ -121,75 +123,94 @@ export function EditModal({ site, categories, isDarkMode, onClose, onSave, setti
                         onSave(f);
                     }} className="flex flex-col gap-8">
 
-                        {/* 1. URL Section - Primary Input */}
-                        <div className="relative group">
-                            <div
-                                className={`absolute left-3 top-3.5 transition-colors ${isDarkMode ? 'text-slate-500 group-focus-within:text-indigo-400' : 'text-slate-400 group-focus-within:text-indigo-500'}`}>
-                                <LinkIcon size={18} /></div>
-                            <input
-                                required
-                                autoFocus={!site}
-                                className={`w-full pl-10 pr-4 py-3 rounded-xl text-base border-2 outline-none transition-all ${isDarkMode ? 'bg-slate-800/50 border-white/5 focus:border-indigo-500/50' : 'bg-slate-50 border-slate-100 focus:border-indigo-500/30'} focus:ring-4 focus:ring-indigo-500/10`}
-                                value={f.url}
-                                onChange={e => setF({ ...f, url: e.target.value })}
-                                onKeyDown={async (e) => {
-                                    if (e.key === 'Enter') {
-                                        e.preventDefault();
-                                        let val = f.url.trim();
-                                        if (!val) return;
+                        {/* Type Selection */}
+                        <div className={`p-1 rounded-xl flex ${isDarkMode ? 'bg-slate-800' : 'bg-slate-100'}`}>
+                            {[
+                                { id: 'site', label: '普通站点' },
+                                { id: 'folder', label: '文件夹' }
+                            ].map(t => (
+                                <button
+                                    key={t.id}
+                                    type="button"
+                                    onClick={() => setF({ ...f, type: t.id })}
+                                    className={`flex-1 py-2 rounded-lg text-sm font-medium transition-all ${f.type === t.id ? 'bg-white dark:bg-slate-700 shadow-sm text-indigo-600 dark:text-indigo-400' : 'opacity-60 hover:opacity-100'}`}
+                                >
+                                    {t.label}
+                                </button>
+                            ))}
+                        </div>
 
-                                        // Auto-prepend https://
+                        {/* 1. URL Section - Only for Sites */}
+                        {f.type === 'site' && (
+                            <div className="relative group">
+                                <div
+                                    className={`absolute left-3 top-3.5 transition-colors ${isDarkMode ? 'text-slate-500 group-focus-within:text-indigo-400' : 'text-slate-400 group-focus-within:text-indigo-500'}`}>
+                                    <LinkIcon size={18} /></div>
+                                <input
+                                    required={f.type === 'site'}
+                                    autoFocus={!site}
+                                    className={`w-full pl-10 pr-4 py-3 rounded-xl text-base border-2 outline-none transition-all ${isDarkMode ? 'bg-slate-800/50 border-white/5 focus:border-indigo-500/50' : 'bg-slate-50 border-slate-100 focus:border-indigo-500/30'} focus:ring-4 focus:ring-indigo-500/10`}
+                                    value={f.url}
+                                    onChange={e => setF({ ...f, url: e.target.value })}
+                                    onKeyDown={async (e) => {
+                                        if (e.key === 'Enter') {
+                                            e.preventDefault();
+                                            let val = f.url.trim();
+                                            if (!val) return;
+
+                                            // Auto-prepend https://
+                                            if (!/^https?:\/\//i.test(val)) {
+                                                val = 'https://' + val;
+                                                setF(prev => ({ ...prev, url: val }));
+                                            }
+
+                                            // Fetch metadata on Enter key
+                                            try {
+                                                const urlChanged = val !== lastFetchedUrl.current;
+                                                lastFetchedUrl.current = val;
+                                                const res = await fetch(`/api/metadata?url=${encodeURIComponent(val)}`);
+                                                if (res.ok) {
+                                                    const data = await res.json();
+                                                    setF(prev => ({
+                                                        ...prev,
+                                                        name: data.title || prev.name,
+                                                        desc: (urlChanged || data.description) ? data.description : prev.desc
+                                                    }));
+                                                }
+                                            } catch (e) {
+                                                console.error('Failed to fetch title', e);
+                                            }
+                                        }
+                                    }}
+                                    onBlur={async () => {
+                                        let val = f.url.trim();
+                                        if (f.type === 'site' && !val) return; // Only return early for missing URL if type is 'site'.
                                         if (!/^https?:\/\//i.test(val)) {
                                             val = 'https://' + val;
                                             setF(prev => ({ ...prev, url: val }));
                                         }
-
-                                        // Fetch metadata on Enter key
-                                        try {
-                                            const urlChanged = val !== lastFetchedUrl.current;
-                                            lastFetchedUrl.current = val;
-                                            const res = await fetch(`/api/metadata?url=${encodeURIComponent(val)}`);
-                                            if (res.ok) {
-                                                const data = await res.json();
-                                                setF(prev => ({
-                                                    ...prev,
-                                                    name: data.title || prev.name,
-                                                    desc: (urlChanged || data.description) ? data.description : prev.desc
-                                                }));
+                                        if (!site) {
+                                            try {
+                                                const urlChanged = val !== lastFetchedUrl.current;
+                                                lastFetchedUrl.current = val;
+                                                const res = await fetch(`/api/metadata?url=${encodeURIComponent(val)}`);
+                                                if (res.ok) {
+                                                    const data = await res.json();
+                                                    setF(prev => ({
+                                                        ...prev,
+                                                        name: data.title || prev.name,
+                                                        desc: (urlChanged || data.description) ? data.description : prev.desc
+                                                    }));
+                                                }
+                                            } catch (e) {
+                                                console.error('Failed to fetch title', e);
                                             }
-                                        } catch (e) {
-                                            console.error('Failed to fetch title', e);
                                         }
-                                    }
-                                }}
-                                onBlur={async () => {
-                                    let val = f.url.trim();
-                                    if (!val) return;
-                                    if (!/^https?:\/\//i.test(val)) {
-                                        val = 'https://' + val;
-                                        setF(prev => ({ ...prev, url: val }));
-                                    }
-                                    if (!site) {
-                                        try {
-                                            const urlChanged = val !== lastFetchedUrl.current;
-                                            lastFetchedUrl.current = val;
-                                            const res = await fetch(`/api/metadata?url=${encodeURIComponent(val)}`);
-                                            if (res.ok) {
-                                                const data = await res.json();
-                                                setF(prev => ({
-                                                    ...prev,
-                                                    name: data.title || prev.name,
-                                                    desc: (urlChanged || data.description) ? data.description : prev.desc
-                                                }));
-                                            }
-                                        } catch (e) {
-                                            console.error('Failed to fetch title', e);
-                                        }
-                                    }
-                                }}
-                                placeholder="输入网站链接 (例如 google.com)"
-                            />
-                        </div>
+                                    }}
+                                    placeholder="输入网站链接 (例如 google.com)"
+                                />
+                            </div>
+                        )}
 
                         <div className="grid grid-cols-1 md:grid-cols-12 gap-8">
                             {/* Left Column: Visuals & Style (5 cols) */}
@@ -343,6 +364,28 @@ export function EditModal({ site, categories, isDarkMode, onClose, onSave, setti
                                         )}
                                     </div>
                                 </div>
+
+                                {/* Parent Folder Selection - Only for Sites */}
+                                {f.type === 'site' && (
+                                    <div className="relative">
+                                        <label className={labelClass}>所属文件夹</label>
+                                        <div className="relative">
+                                            <select
+                                                className={`${inputClass} appearance-none cursor-pointer`}
+                                                value={f.parentId || ''}
+                                                onChange={e => setF({ ...f, parentId: e.target.value })}
+                                            >
+                                                <option value="">(无 - 根目录)</option>
+                                                {sites && sites
+                                                    .filter((s: any) => s.type === 'folder' && s.id !== site?.id)
+                                                    .map((folder: any) => (
+                                                        <option key={folder.id} value={folder.id}>{folder.name}</option>
+                                                    ))}
+                                            </select>
+                                            <ChevronDown size={16} className="absolute right-3 top-3.5 opacity-50 pointer-events-none" />
+                                        </div>
+                                    </div>
+                                )}
 
                                 <div className="flex-1">
                                     <label className={labelClass}>简介描述</label>

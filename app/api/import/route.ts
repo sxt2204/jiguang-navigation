@@ -4,7 +4,7 @@ import { prisma } from '@/lib/prisma';
 export async function POST(request: Request) {
     try {
         const data = await request.json();
-        const { sites, categories, categoryColors, layout, config, theme, hiddenCategories, customFonts } = data;
+        const { sites, categories, categoryColors, layout, config, theme, hiddenCategories, customFonts, searchEngine } = data; // [NEW] Added searchEngine
 
         // 1. Update Settings
         await prisma.globalSettings.upsert({
@@ -13,12 +13,14 @@ export async function POST(request: Request) {
                 layout: layout ? JSON.stringify(layout) : undefined,
                 config: config ? JSON.stringify(config) : undefined,
                 theme: theme ? JSON.stringify(theme) : undefined,
+                searchEngine: searchEngine || undefined // [NEW] Update searchEngine
             },
             create: {
                 id: 1,
                 layout: JSON.stringify(layout || {}),
                 config: JSON.stringify(config || {}),
                 theme: JSON.stringify(theme || {}),
+                searchEngine: searchEngine || 'Google' // [NEW] Create with default
             }
         });
 

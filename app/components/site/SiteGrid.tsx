@@ -1,6 +1,7 @@
 import React from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { SortableContext, rectSortingStrategy } from '@dnd-kit/sortable';
+import { SortableContext } from '@dnd-kit/sortable';
+import { createSmartSortingStrategy } from '../dnd/SmartSortingStrategy';
 import { SortableSiteCard } from './SiteCard';
 import { CategoryHeader } from '../ui/CategoryHeader';
 import { EmptyState } from '../ui/EmptyState';
@@ -18,7 +19,8 @@ interface SiteGridProps {
     isLoggedIn: boolean;
     onEdit: (site: any) => void;
     onDelete: (site: any) => void;
-    onContextMenu: (e: React.MouseEvent, siteId: number) => void;
+    onContextMenu: (e: any, id: any) => void;
+    onFolderClick?: (folder: any) => void;
     getCategoryColor: (cat: string) => string;
 }
 
@@ -35,6 +37,7 @@ export function SiteGrid({
     onEdit,
     onDelete,
     onContextMenu,
+    onFolderClick,
     getCategoryColor
 }: SiteGridProps) {
 
@@ -62,7 +65,7 @@ export function SiteGrid({
         : visibleSites.map(s => s.id);
 
     return (
-        <SortableContext items={sortableItems} strategy={rectSortingStrategy}>
+        <SortableContext items={sortableItems} strategy={createSmartSortingStrategy(visibleSites, sortableItems)}>
             {activeTab === '全部' && !isSearching ? (
                 categories.filter(cat => !hiddenCategories.includes(cat)).map(cat => {
                     const catSites = visibleSites.filter(s => s.category === cat);
@@ -78,10 +81,12 @@ export function SiteGrid({
                                 compactMode={layoutSettings.compactMode}
                             />
 
-                            <div className="grid dynamic-grid gap-[var(--grid-gap)]" style={{
-                                '--grid-cols': layoutSettings.gridCols,
-                                '--grid-gap': `${layoutSettings.gap * (layoutSettings.compactMode ? 2.5 : 4)}px`
-                            } as any}>
+                            <div className="grid transition-all duration-300 ease-in-out" style={{
+                                gap: `${layoutSettings.gap * (layoutSettings.compactMode ? 2.5 : 4)}px`,
+                                gridTemplateColumns: (!layoutSettings.gridMode || layoutSettings.gridMode === 'auto')
+                                    ? `repeat(auto-fill, minmax(${layoutSettings.cardWidth || 260}px, 1fr))`
+                                    : `repeat(${layoutSettings.gridCols || 6}, minmax(0, 1fr))`
+                            }}>
                                 <AnimatePresence mode="popLayout" initial={false}>
                                     {catSites.map(site => (
                                         <SortableSiteCard
@@ -90,6 +95,7 @@ export function SiteGrid({
                                             onEdit={() => onEdit(site)}
                                             onDelete={() => onDelete(site)}
                                             onContextMenu={onContextMenu}
+                                            onFolderClick={onFolderClick}
                                         />
                                     ))}
                                 </AnimatePresence>
@@ -98,10 +104,10 @@ export function SiteGrid({
                     )
                 })
             ) : (
-                <div className="grid dynamic-grid gap-[var(--grid-gap)]" style={{
-                    '--grid-cols': layoutSettings.gridCols,
-                    '--grid-gap': `${layoutSettings.gap * (layoutSettings.compactMode ? 2.5 : 4)}px`
-                } as any}>
+                <div className="grid transition-all duration-300 ease-in-out" style={{
+                    gap: `${layoutSettings.gap * (layoutSettings.compactMode ? 2.5 : 4)}px`,
+                    gridTemplateColumns: `repeat(auto-fill, minmax(${layoutSettings.cardWidth || 260}px, 1fr))`
+                }}>
                     {/* Disable Exit animation if drag enabled to avoid conflict?? No, popLayout handles it. 
                         We just need to disable Layout animation if drag is disabled in SortableSiteCard? 
                         No, dnd-kit handles drag. Layout prop in motion is for reordering.
@@ -114,6 +120,7 @@ export function SiteGrid({
                                 onEdit={() => onEdit(site)}
                                 onDelete={() => onDelete(site)}
                                 onContextMenu={onContextMenu}
+                                onFolderClick={onFolderClick}
                             />
                         ))}
                     </AnimatePresence>

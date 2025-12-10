@@ -5,7 +5,7 @@ import { motion } from 'framer-motion';
 import NextImage from 'next/image';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { Globe, MoreHorizontal, ExternalLink } from 'lucide-react';
+import { Globe, MoreHorizontal, ExternalLink, Folder } from 'lucide-react';
 import { hexToRgb, getAccessibleTextColor, shouldUseTextShadow, FAVICON_PROVIDERS } from '@/lib/utils';
 import { ICON_MAP, FONTS } from '@/lib/constants';
 import { useFonts } from '@/app/hooks/useFonts';
@@ -19,6 +19,7 @@ interface SiteCardProps {
     onDelete?: () => void;
     onContextMenu?: (e: React.MouseEvent, id: any) => void;
     isOverlay?: boolean;
+    onFolderClick?: (folder: any) => void;
 }
 
 export const SiteCard = React.memo(function SiteCard({
@@ -29,7 +30,8 @@ export const SiteCard = React.memo(function SiteCard({
     onEdit,
     onDelete,
     onContextMenu,
-    isOverlay
+    isOverlay,
+    onFolderClick
 }: SiteCardProps) {
     const [iconState, setIconState] = useState(0);
     const [imgSrc, setImgSrc] = useState<string | null>(null);
@@ -46,6 +48,20 @@ export const SiteCard = React.memo(function SiteCard({
         }
     }, [site.customIconUrl, site.iconType]);
 
+    const handleClick = (e: React.MouseEvent) => {
+        // Assuming isDragging is defined elsewhere or will be added.
+        // For now, it will be undefined if not provided by useSortable or similar.
+        // if (isDragging) return; 
+
+        if (site.type === 'folder') {
+            onFolderClick?.(site);
+            return;
+        }
+
+        e.preventDefault();
+        window.open(site.url, '_blank');
+    };
+
     const handleImageError = () => {
         if (hasError) return;
         setHasError(true);
@@ -59,7 +75,7 @@ export const SiteCard = React.memo(function SiteCard({
         }
     };
 
-    const Icon = ICON_MAP[site.icon] || Globe;
+    const Icon = site.type === 'folder' ? Folder : (ICON_MAP[site.icon] || Globe);
     const brandRgb = hexToRgb(site.color || '#6366f1');
     const bgBase = isDarkMode ? [30, 41, 59] : [255, 255, 255];
     const isWallpaperMode = settings.bgEnabled && (settings.bgType === 'bing' || settings.bgType === 'custom');
@@ -123,10 +139,77 @@ export const SiteCard = React.memo(function SiteCard({
         perceivedBg = site.color || '#6366f1';
     }
 
+    const [realWidth, setRealWidth] = useState(settings.cardWidth || 260);
+    const cardRef = React.useRef<HTMLAnchorElement>(null);
+
+    useEffect(() => {
+        if (!cardRef.current) return;
+        const resizeObserver = new ResizeObserver((entries) => {
+            for (const entry of entries) {
+                if (entry.contentBoxSize) {
+                    setRealWidth(entry.contentBoxSize[0].inlineSize);
+                } else {
+                    setRealWidth(entry.contentRect.width);
+                }
+            }
+        });
+        resizeObserver.observe(cardRef.current);
+        // Initial set
+        setRealWidth(cardRef.current.offsetWidth);
+        return () => resizeObserver.disconnect();
+    }, []);
+
     const textColor = forceWhiteText ? '#ffffff' : getAccessibleTextColor(perceivedBg);
     const hasShadow = forceWhiteText || shouldUseTextShadow(textColor);
 
-    // --- Typography Resolution ---
+    // Dynamic Sizing based on Real Dimensions
+    const height = settings.cardHeight;
+    const width = realWidth;
+
+    const isTinyHeight = height < 85;
+    const isSmallHeight = height < 110;
+    const isTinyWidth = width < 140;
+    const isSmallWidth = width < 200;
+
+    const isMicroHeight = height < 60;
+    const isMicroWidth = width < 110;
+
+    let iconSizePx = 40;
+    let paddingClass = 'p-4';
+    let gapClass = 'gap-3';
+    let titleSizeBonus = 0;
+
+    // --- Icon Size Logic ---
+    // User Request: Height > 60 -> Original (40).
+    if (isMicroHeight || isMicroWidth) {
+        iconSizePx = 30;
+    } else if (height < 60 || width < 140) {
+        iconSizePx = 24;
+    } else if (width < 200) {
+        iconSizePx = 32; // Constrained by width only
+    } else {
+        iconSizePx = 40;
+    }
+
+    // --- Padding/Gap Logic ---
+    if (isMicroHeight || isMicroWidth) {
+        paddingClass = 'p-1.5 px-2';
+        gapClass = 'gap-2';
+        titleSizeBonus = -3;
+    } else if (height < 85 || width < 140) { // < 85px: Compact Vertical
+        paddingClass = 'p-2.5';
+        gapClass = 'gap-2';
+        titleSizeBonus = -2;
+    } else if (height < 110 || width < 200) { // < 110px: Small
+        paddingClass = 'p-3';
+        gapClass = 'gap-2.5';
+        titleSizeBonus = -1;
+    } else {
+        paddingClass = 'p-4';
+        gapClass = 'gap-3';
+        titleSizeBonus = 0;
+    }
+    const iconSizeClass = `w-[${iconSizePx}px] h-[${iconSizePx}px]`;
     const { allFonts } = useFonts();
     const resolveFont = (id: string) => {
         if (id === 'system') return undefined;
@@ -159,7 +242,7 @@ export const SiteCard = React.memo(function SiteCard({
     let showImage = false;
     let currentSrc = '';
 
-    if (site.iconType === 'auto' || site.iconType === 'upload') {
+    if ((site.iconType === 'auto' || site.iconType === 'upload') && site.type !== 'folder') {
         if (site.iconType === 'upload' && imgSrc && !hasError) {
             currentSrc = imgSrc;
         } else {
@@ -179,7 +262,7 @@ export const SiteCard = React.memo(function SiteCard({
 
     if (showImage) {
         renderIcon = (
-            <div className="w-10 h-10 rounded-xl shrink-0 overflow-hidden">
+            <div className="w-full h-full rounded-xl shrink-0 overflow-hidden">
                 <NextImage
                     src={currentSrc}
                     alt={site.name}
@@ -200,17 +283,41 @@ export const SiteCard = React.memo(function SiteCard({
         const firstLetter = site.name ? site.name.charAt(0).toUpperCase() : '?';
         renderIcon = (
             <div
-                className="w-10 h-10 rounded-xl flex items-center justify-center text-white shadow-md font-bold text-lg"
-                style={{ backgroundColor: site.color }}
+                className="w-full h-full rounded-xl flex items-center justify-center text-white shadow-md font-bold"
+                style={{ backgroundColor: site.color, fontSize: iconSizePx * 0.5 }}
             >
-                {site.iconType === 'library' && Icon ? <Icon size={24} /> : firstLetter}
+                {(site.type === 'folder' || site.iconType === 'library') && Icon ? <Icon size={iconSizePx * 0.6} /> : firstLetter}
             </div>
         );
     }
 
+    // Layout Modes
+    const isRowLayout = height < 75;
+    const isTightLayout = height >= 75 && height <= 90;
+    const isStandardLayout = height > 90;
+
+    // Description Limit
+    const showDesc = height > 24; // Minimal threshold
+
+    // Shared Description Component
+    const Description = ({ className = '' }: { className?: string }) => (
+        <span
+            className={`opacity-70 ${hasShadow ? 'text-shadow-sm' : ''} ${className}`}
+            style={{
+                color: descColorStyle,
+                fontFamily: descFontFamily,
+                fontSize: descFontSize ? `${descFontSize}px` : undefined,
+                maxWidth: isRowLayout ? '50%' : undefined
+            }}
+        >
+            {site.desc}
+        </span>
+    );
+
     return (
         <motion.div
-            className={`spotlight-card relative h-full rounded-2xl overflow-hidden ${isOverlay ? 'shadow-2xl scale-105 cursor-grabbing' : ''}`}
+            className={`spotlight-card relative h-full overflow-hidden ${isOverlay ? 'shadow-2xl scale-105 cursor-grabbing' : ''}`}
+            style={{ borderRadius: settings.cardRadius ?? 16 }}
             whileHover={!isOverlay && (settings.enableHover ?? true) ? {
                 scale: 1.02,
                 y: -4 * (settings.hoverIntensity ?? 1),
@@ -224,12 +331,14 @@ export const SiteCard = React.memo(function SiteCard({
             }}
         >
             <a
+                ref={cardRef}
                 href={isLoggedIn || isOverlay ? undefined : site.url} target="_blank" rel="noopener noreferrer"
-                onClick={(e) => isLoggedIn && e.preventDefault()}
+                onClick={handleClick}
                 onContextMenu={(e) => onContextMenu && onContextMenu(e, site.id)}
-                className={`group relative block h-full rounded-2xl border transition-all duration-300 overflow-hidden isolate z-10 ${isLoggedIn ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'} ${site.isHidden && isLoggedIn ? 'opacity-50 grayscale' : ''}`}
+                className={`group relative block h-full border transition-all duration-300 overflow-hidden isolate z-10 ${isLoggedIn ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'} ${site.isHidden && isLoggedIn ? 'opacity-50 grayscale' : ''}`}
                 style={{
                     height: settings.cardHeight,
+                    borderRadius: settings.cardRadius ?? 16,
                     backgroundColor: bgColor,
                     borderColor: borderColor,
                     boxShadow: boxShadow,
@@ -246,34 +355,49 @@ export const SiteCard = React.memo(function SiteCard({
                     />
                 )}
 
-                <div className="relative z-10 h-full flex flex-col p-4 justify-between">
-                    <div className="flex items-start justify-between gap-3">
-                        <div className="flex items-center gap-3 overflow-hidden">
+                <div className={`relative z-10 h-full flex flex-col ${paddingClass} ${isStandardLayout ? 'justify-between' : 'justify-center'}`}>
+                    <div className={`flex ${isStandardLayout ? 'items-start' : 'items-center'} justify-between ${gapClass}`}>
+                        <div className={`flex items-center ${gapClass} overflow-hidden min-w-0 flex-1`}>
                             {site.iconType === 'library' ? (
-                                <div className="w-10 h-10 rounded-xl flex items-center justify-center text-white shadow-md" style={{ backgroundColor: site.color }}>
-                                    <Icon size={20} />
+                                <div className={`rounded-xl shrink-0 flex items-center justify-center text-white shadow-md`} style={{ backgroundColor: site.color, width: iconSizePx, height: iconSizePx }}>
+                                    <Icon size={iconSizePx * 0.6} />
                                 </div>
                             ) : (
-                                renderIcon
+                                <div style={{ width: iconSizePx, height: iconSizePx }} className="rounded-xl overflow-hidden shrink-0">
+                                    {renderIcon}
+                                </div>
                             )}
 
-                            <span
-                                className={`font-bold truncate text-sm sm:text-base ${hasShadow ? 'text-shadow-sm' : ''}`}
-                                style={{ color: titleColorStyle, fontFamily: titleFontFamily, fontSize: titleFontSize ? `${titleFontSize}px` : undefined }}>{site.name}</span></div>
+                            <div className={`flex flex-1 min-w-0 ${isRowLayout ? 'flex-row items-baseline gap-2' : 'flex-col'}`}>
+                                <span
+                                    className={`font-bold truncate text-sm sm:text-base ${hasShadow ? 'text-shadow-sm' : ''} shrink-0`}
+                                    style={{ color: titleColorStyle, fontFamily: titleFontFamily, fontSize: titleFontSize ? `${titleFontSize}px` : undefined }}>
+                                    {site.name}
+                                </span>
+
+                                {showDesc && !isStandardLayout && site.desc && (
+                                    <Description className={`truncate text-xs ${isRowLayout ? 'flex-1' : 'mt-0.5'}`} />
+                                )}
+                            </div>
+                        </div>
+
                         {isLoggedIn ? (<button onClick={(e) => {
                             e.stopPropagation();
                             onEdit && onEdit();
                         }}
-                            className="opacity-0 group-hover:opacity-100 p-1.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/10 transition-all active:scale-95">
+                            className="opacity-0 group-hover:opacity-100 p-1.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/10 transition-all active:scale-95 shrink-0">
                             <MoreHorizontal size={16} style={{ color: textColor }} /></button>) : (<ExternalLink size={14}
-                                className="opacity-0 group-hover:opacity-100 transition-opacity mt-1"
+                                className="opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
                                 style={{ color: textColor }} />)}
                     </div>
-                    {
-                        settings.cardHeight > 90 && (
-                            <p className={`text-xs leading-relaxed line-clamp-2 opacity-70 mt-2 ${hasShadow ? 'text-shadow-sm' : ''}`}
-                                style={{ color: descColorStyle, fontFamily: descFontFamily, fontSize: descFontSize ? `${descFontSize}px` : undefined }}>{site.desc}</p>)
-                    }
+
+                    {/* Footer Description for Standard Layout */}
+                    {showDesc && isStandardLayout && site.desc && (
+                        <p className={`text-xs leading-relaxed line-clamp-2 opacity-70 mt-2 ${hasShadow ? 'text-shadow-sm' : ''}`}
+                            style={{ color: descColorStyle, fontFamily: descFontFamily, fontSize: descFontSize ? `${descFontSize}px` : undefined }}>
+                            {site.desc}
+                        </p>
+                    )}
                 </div >
             </a >
         </motion.div >
