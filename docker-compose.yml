@@ -10,7 +10,9 @@ services:
       - DATABASE_URL=file:/app/data/dev.db
     volumes:
       - jg_data:/app/data
+      - jg_uploads:/app/public/uploads
     restart: unless-stopped
 
 volumes:
   jg_data:
+  jg_uploads:
