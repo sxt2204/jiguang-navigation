@@ -3,13 +3,16 @@ import {
     Palette, ImageIcon, Layout, Globe, List, Settings, X, Type, ZoomIn, CheckCircle2,
     PaintBucket, ImagePlus, RefreshCw, UploadCloud, Move, Lock, Code, Plus, Trash2,
     HardDrive, Download, EyeOff, Eye, ArrowUp, ArrowDown, GripVertical, Image as WallpaperIcon,
-    Sparkles, MousePointer2, Hand, LayoutList, Layers, ExternalLink, ChevronRight, ChevronDown, Share2
+    Sparkles, MousePointer2, Hand, LayoutList, Layers, ExternalLink, ChevronRight, ChevronDown, Share2,
+    Edit3, Check
 } from 'lucide-react';
 import {
     DndContext,
     closestCenter,
     KeyboardSensor,
     PointerSensor,
+    MouseSensor,
+    TouchSensor,
     useSensor,
     useSensors,
     DragEndEvent
@@ -121,10 +124,64 @@ export function SettingsPanel({
     const [isFontPickerOpen, setIsFontPickerOpen] = useState(false);
     const [fontToDelete, setFontToDelete] = useState<any>(null);
 
+    const [renamingCategory, setRenamingCategory] = useState<string | null>(null);
+    const [renameValue, setRenameValue] = useState('');
+
+    const handleRename = async () => {
+        if (!renamingCategory || !renameValue.trim() || renamingCategory === renameValue.trim()) {
+            setRenamingCategory(null);
+            return;
+        }
+        const oldName = renamingCategory;
+        const newName = renameValue.trim();
+
+        if (categories.includes(newName)) {
+            showToast('分类名称已存在', 'error');
+            return;
+        }
+
+        try {
+            const res = await fetch('/api/categories', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ oldName, newName })
+            });
+
+            if (res.ok) {
+                // Update Categories List
+                setCategories(categories.map(c => c === oldName ? newName : c));
+
+                // Update Sites
+                setSites(sites.map(s => s.category === oldName ? { ...s, category: newName } : s));
+
+                // Update Colors
+                if (categoryColors[oldName]) {
+                    const newColors = { ...categoryColors };
+                    newColors[newName] = newColors[oldName];
+                    delete newColors[oldName];
+                    setCategoryColors(newColors);
+                }
+
+                setRenamingCategory(null);
+                showToast('分类重命名成功');
+            } else {
+                showToast('重命名失败', 'error');
+            }
+        } catch (e) {
+            showToast('请求失败', 'error');
+        }
+    };
+
     const sensors = useSensors(
-        useSensor(PointerSensor, {
+        useSensor(MouseSensor, {
             activationConstraint: {
                 distance: 8,
+            },
+        }),
+        useSensor(TouchSensor, {
+            activationConstraint: {
+                delay: 250,
+                tolerance: 5,
             },
         }),
         useSensor(KeyboardSensor, {
@@ -143,7 +200,8 @@ export function SettingsPanel({
         if (isCategory(over.id) && !isCategory(active.id)) {
             // Dragging a site over a Category Header -> Move to Root of that Category
             const activeSite = sites.find(s => s.id === active.id);
-            if (activeSite && activeSite.parentId) {
+            // Allow moving ANY site to this category (unless it's already a root site there)
+            if (activeSite && (activeSite.category !== over.id || activeSite.parentId)) {
                 const newItems = sites.map(s => s.id === activeSite.id ? { ...s, parentId: null, category: over.id } : s);
                 setSites(newItems);
             }
@@ -189,6 +247,17 @@ export function SettingsPanel({
                 const newItems = sites.map(s => s.id === activeSite.id ? { ...s, parentId: overSite.parentId, category: overSite.category } : s);
                 setSites(newItems);
             }
+
+            // [FIX] Cross-Category Drag (Root to Root)
+            // If dragging from one category to another (and both are root items, or we decide to flatten)
+            if (activeSite.category !== overSite.category) {
+                // If overSite is in a folder, we already handled it above (Moving into Folder or Same Folder Level).
+                // If overSite is Root, we just switch category.
+                if (!overSite.parentId) {
+                    const newItems = sites.map(s => s.id === activeSite.id ? { ...s, category: overSite.category, parentId: null } : s);
+                    setSites(newItems);
+                }
+            }
         }
     };
 
@@ -233,6 +302,18 @@ export function SettingsPanel({
                         console.error(e);
                     });
                 }
+            }
+
+            // Site dropped on Category (Persist the change made in handleDragOver)
+            if (!isCategory(active.id) && isCategory(over.id)) {
+                fetch('/api/sites', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(sites)
+                }).catch(e => {
+                    showToast('移动保存失败', 'error');
+                    console.error(e);
+                });
             }
         }
     };
@@ -1320,7 +1401,7 @@ export function SettingsPanel({
                                             <SortableContext items={categories} strategy={verticalListSortingStrategy}>
                                                 {categories.map((cat: string, idx: number) => (
                                                     <SortableCategoryItem key={cat} id={cat}>
-                                                        <div className={`p-3 rounded-xl border transition-colors ${isDarkMode ? 'bg-white/5 border-white/5' : 'bg-slate-50 border-slate-100'}`}>
+                                                        <div className={`group p-3 rounded-xl border transition-colors ${isDarkMode ? 'bg-white/5 border-white/5' : 'bg-slate-50 border-slate-100'}`}>
                                                             <div className="flex items-center justify-between">
                                                                 <div className="flex items-center gap-3">
                                                                     <SortableDragHandle className="cursor-grab active:cursor-grabbing text-slate-400 hover:text-indigo-500">
@@ -1346,10 +1427,39 @@ export function SettingsPanel({
                                                                                 className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
                                                                             />
                                                                         </div>
-                                                                        <span className={`${hiddenCategories.includes(cat) ? 'opacity-50 line-through decoration-2' : ''}`}>{cat}</span>
-                                                                        <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-black/5 dark:bg-white/10 opacity-70">
-                                                                            {sites.filter((s: any) => s.category === cat).length}
-                                                                        </span>
+                                                                        {renamingCategory === cat ? (
+                                                                            <div className="flex items-center gap-1" onClick={e => e.stopPropagation()} onMouseDown={e => e.stopPropagation()}>
+                                                                                <Input
+                                                                                    value={renameValue}
+                                                                                    onChange={(e) => setRenameValue(e.target.value)}
+                                                                                    className="h-6 w-32 text-sm px-1 py-0 select-text bg-white dark:bg-slate-800"
+                                                                                    autoFocus
+                                                                                    onKeyDown={(e) => {
+                                                                                        if (e.key === 'Enter') handleRename();
+                                                                                        if (e.key === 'Escape') setRenamingCategory(null);
+                                                                                        e.stopPropagation();
+                                                                                    }}
+                                                                                />
+                                                                                <button onClick={handleRename} className="p-1 hover:text-green-500 rounded-full hover:bg-green-500/10 transition-colors"><Check size={14} /></button>
+                                                                                <button onClick={() => setRenamingCategory(null)} className="p-1 hover:text-red-500 rounded-full hover:bg-red-500/10 transition-colors"><X size={14} /></button>
+                                                                            </div>
+                                                                        ) : (
+                                                                            <>
+                                                                                <span
+                                                                                    className={`${hiddenCategories.includes(cat) ? 'opacity-50 line-through decoration-2' : ''} cursor-pointer hover:text-indigo-500 transition-colors`}
+                                                                                    onClick={() => { setRenamingCategory(cat); setRenameValue(cat); }}
+                                                                                    title="点击重命名"
+                                                                                >
+                                                                                    {cat}
+                                                                                </span>
+                                                                                <button onClick={() => { setRenamingCategory(cat); setRenameValue(cat); }} className="opacity-0 group-hover:opacity-100 transition-opacity p-1 text-slate-400 hover:text-indigo-500 rounded hover:bg-indigo-50 dark:hover:bg-white/10">
+                                                                                    <Edit3 size={12} />
+                                                                                </button>
+                                                                                <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-black/5 dark:bg-white/10 opacity-70">
+                                                                                    {sites.filter((s: any) => s.category === cat).length}
+                                                                                </span>
+                                                                            </>
+                                                                        )}
                                                                     </div>
                                                                 </div>
                                                                 <div className="flex gap-1">

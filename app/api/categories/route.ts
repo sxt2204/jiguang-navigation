@@ -35,6 +35,20 @@ export async function PUT(request: Request) {
                 });
             }
             return NextResponse.json({ success: true });
+        } else if (body.oldName && body.newName) {
+            // Rename Category
+            // Transaction: Update Category Name + Update All Sites with this Category
+            await prisma.$transaction([
+                prisma.category.update({
+                    where: { name: body.oldName },
+                    data: { name: body.newName }
+                }),
+                prisma.site.updateMany({
+                    where: { category: body.oldName },
+                    data: { category: body.newName }
+                })
+            ]);
+            return NextResponse.json({ success: true, name: body.newName });
         } else {
             const category = await prisma.category.update({
                 where: { name: body.name },

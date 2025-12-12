@@ -1,4 +1,5 @@
 import React from 'react';
+import { useDroppable } from '@dnd-kit/core';
 
 interface CategoryHeaderProps {
     category: string;
@@ -15,8 +16,13 @@ export function CategoryHeader({
     bgEnabled,
     compactMode
 }: CategoryHeaderProps) {
+    const { setNodeRef } = useDroppable({
+        id: category,
+        data: { type: 'category', category }
+    });
+
     return (
-        <div className={`relative flex items-center ${compactMode ? 'py-3 mb-3' : 'py-6 mb-6'}`}>
+        <div ref={setNodeRef} className={`relative flex items-center ${compactMode ? 'py-3 mb-3' : 'py-6 mb-6'}`}>
             <div className="absolute inset-0 flex items-center" aria-hidden="true">
                 <div className={`w-full h-px bg-gradient-to-r from-transparent via-slate-300 to-transparent ${isDarkMode ? 'via-white/5' : 'via-slate-200'} ${bgEnabled ? '!via-white/10' : ''}`}></div>
             </div>

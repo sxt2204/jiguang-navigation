@@ -351,7 +351,9 @@ export function EditModal({ site, categories, sites, isDarkMode, onClose, onSave
                                                     className={`absolute top-full left-0 right-0 mt-2 p-1.5 rounded-xl border shadow-xl z-20 max-h-60 overflow-y-auto custom-scrollbar animate-in fade-in zoom-in-95 duration-200 ${isDarkMode ? 'bg-slate-800 border-white/10' : 'bg-white border-slate-100'}`}>
                                                     {categories.map((c: string) => (
                                                         <button type="button" key={c} onClick={() => {
-                                                            setF({ ...f, category: c });
+                                                            // If category changes, reset parentId because folders are category-specific
+                                                            const newParentId = (f.category !== c) ? '' : f.parentId;
+                                                            setF({ ...f, category: c, parentId: newParentId });
                                                             setIsCatOpen(false);
                                                         }}
                                                             className={`w-full text-left px-3 py-2.5 rounded-lg text-sm transition-colors flex items-center justify-between group ${f.category === c ? 'bg-indigo-500/10 text-indigo-500' : (isDarkMode ? 'hover:bg-white/5 text-slate-300' : 'hover:bg-slate-50 text-slate-600')}`}>
@@ -377,7 +379,7 @@ export function EditModal({ site, categories, sites, isDarkMode, onClose, onSave
                                             >
                                                 <option value="">(无 - 根目录)</option>
                                                 {sites && sites
-                                                    .filter((s: any) => s.type === 'folder' && s.id !== site?.id)
+                                                    .filter((s: any) => s.type === 'folder' && s.id !== site?.id && s.category === f.category)
                                                     .map((folder: any) => (
                                                         <option key={folder.id} value={folder.id}>{folder.name}</option>
                                                     ))}

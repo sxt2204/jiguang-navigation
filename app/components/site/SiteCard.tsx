@@ -31,8 +31,9 @@ export const SiteCard = React.memo(function SiteCard({
     onDelete,
     onContextMenu,
     isOverlay,
-    onFolderClick
-}: SiteCardProps) {
+    onFolderClick,
+    childCount, // New Prop
+}: SiteCardProps & { childCount?: number }) {
     const [iconState, setIconState] = useState(0);
     const [imgSrc, setImgSrc] = useState<string | null>(null);
     const [hasError, setHasError] = useState(false);
@@ -54,6 +55,7 @@ export const SiteCard = React.memo(function SiteCard({
         // if (isDragging) return; 
 
         if (site.type === 'folder') {
+            e.preventDefault();
             onFolderClick?.(site);
             return;
         }
@@ -260,9 +262,12 @@ export const SiteCard = React.memo(function SiteCard({
         }
     }
 
+    // Child Count Badge Logic
+    const showCount = site.type === 'folder' && childCount !== undefined && childCount > 0;
+
     if (showImage) {
         renderIcon = (
-            <div className="w-full h-full rounded-xl shrink-0 overflow-hidden">
+            <div className="w-full h-full rounded-xl shrink-0 overflow-hidden relative">
                 <NextImage
                     src={currentSrc}
                     alt={site.name}
@@ -283,7 +288,7 @@ export const SiteCard = React.memo(function SiteCard({
         const firstLetter = site.name ? site.name.charAt(0).toUpperCase() : '?';
         renderIcon = (
             <div
-                className="w-full h-full rounded-xl flex items-center justify-center text-white shadow-md font-bold"
+                className="w-full h-full rounded-xl flex items-center justify-center text-white shadow-md font-bold relative"
                 style={{ backgroundColor: site.color, fontSize: iconSizePx * 0.5 }}
             >
                 {(site.type === 'folder' || site.iconType === 'library') && Icon ? <Icon size={iconSizePx * 0.6} /> : firstLetter}
@@ -332,7 +337,7 @@ export const SiteCard = React.memo(function SiteCard({
         >
             <a
                 ref={cardRef}
-                href={isLoggedIn || isOverlay ? undefined : site.url} target="_blank" rel="noopener noreferrer"
+                href={isLoggedIn || isOverlay || site.type === 'folder' ? undefined : site.url} target="_blank" rel="noopener noreferrer"
                 onClick={handleClick}
                 onContextMenu={(e) => onContextMenu && onContextMenu(e, site.id)}
                 className={`group relative block h-full border transition-all duration-300 overflow-hidden isolate z-10 ${isLoggedIn ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'} ${site.isHidden && isLoggedIn ? 'opacity-50 grayscale' : ''}`}
@@ -357,16 +362,25 @@ export const SiteCard = React.memo(function SiteCard({
 
                 <div className={`relative z-10 h-full flex flex-col ${paddingClass} ${isStandardLayout ? 'justify-between' : 'justify-center'}`}>
                     <div className={`flex ${isStandardLayout ? 'items-start' : 'items-center'} justify-between ${gapClass}`}>
-                        <div className={`flex items-center ${gapClass} overflow-hidden min-w-0 flex-1`}>
-                            {site.iconType === 'library' ? (
-                                <div className={`rounded-xl shrink-0 flex items-center justify-center text-white shadow-md`} style={{ backgroundColor: site.color, width: iconSizePx, height: iconSizePx }}>
-                                    <Icon size={iconSizePx * 0.6} />
-                                </div>
-                            ) : (
-                                <div style={{ width: iconSizePx, height: iconSizePx }} className="rounded-xl overflow-hidden shrink-0">
-                                    {renderIcon}
-                                </div>
-                            )}
+                        <div className={`flex items-center ${gapClass} min-w-0 flex-1`}>
+                            {/* Icon Wrapper with Badge */}
+                            <div className="relative shrink-0" style={{ width: iconSizePx, height: iconSizePx }}>
+                                {site.iconType === 'library' ? (
+                                    <div className={`w-full h-full rounded-xl flex items-center justify-center text-white shadow-md`} style={{ backgroundColor: site.color }}>
+                                        <Icon size={iconSizePx * 0.6} />
+                                    </div>
+                                ) : (
+                                    <div className="w-full h-full rounded-xl overflow-hidden">
+                                        {renderIcon}
+                                    </div>
+                                )}
+
+                                {showCount && (
+                                    <span className="absolute -top-1.5 -right-1.5 bg-red-500 text-white text-[10px] px-1 rounded-full min-w-[16px] h-[16px] flex items-center justify-center border border-white dark:border-slate-800 shadow-sm z-20 leading-none">
+                                        {childCount}
+                                    </span>
+                                )}
+                            </div>
 
                             <div className={`flex flex-1 min-w-0 ${isRowLayout ? 'flex-row items-baseline gap-2' : 'flex-col'}`}>
                                 <span

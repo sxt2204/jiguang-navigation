@@ -9,10 +9,8 @@ services:
       - NODE_ENV=production
       - DATABASE_URL=file:/app/data/dev.db
     volumes:
-      - jg_data:/app/data
-      - jg_uploads:/app/public/uploads
+      - data:/app/data
     restart: unless-stopped
 
 volumes:
-  jg_data:
-  jg_uploads:
+  data:

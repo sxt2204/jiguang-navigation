@@ -310,21 +310,47 @@ export const WidgetDashboard = React.memo(function WidgetDashboard({ isDarkMode,
         };
 
         const fetchByIP = async () => {
-            try {
-                const res = await fetch('https://get.geojs.io/v1/ip/geo.json');
-                const data = await res.json();
-
-                await fetchLocationName();
-
-                if (data.latitude && data.longitude) {
-                    fetchWeatherData(parseFloat(data.latitude), parseFloat(data.longitude));
-                } else {
-                    setWeather((prev: any) => ({ ...prev, loading: false, error: true }));
+            // Helper to try fetching from provider
+            const tryProvider = async (url: string, parser: (d: any) => any) => {
+                try {
+                    const res = await fetch(url);
+                    if (!res.ok) throw new Error('Status not ok');
+                    const data = await res.json();
+                    return parser(data);
+                } catch (e) {
+                    return null;
                 }
-            } catch (e) {
-                console.error('IP fetch failed', e);
-                setWeather((prev: any) => ({ ...prev, loading: false, error: true }));
+            };
+
+            // 1. Try GeoJS
+            const geojsData = await tryProvider('https://get.geojs.io/v1/ip/geo.json', (d) => ({
+                lat: d.latitude ? parseFloat(d.latitude) : null,
+                lon: d.longitude ? parseFloat(d.longitude) : null,
+                name: d.city || d.region
+            }));
+
+            if (geojsData && geojsData.lat && geojsData.lon) {
+                if (geojsData.name) setLocationName(translateCity(geojsData.name));
+                fetchWeatherData(geojsData.lat, geojsData.lon);
+                return;
             }
+
+            // 2. Try IPWhoIs (Fallback)
+            const ipwhoisData = await tryProvider('https://ipwho.is/', (d) => ({
+                lat: d.latitude,
+                lon: d.longitude,
+                name: d.city || d.region
+            }));
+
+            if (ipwhoisData && ipwhoisData.lat && ipwhoisData.lon) {
+                if (ipwhoisData.name) setLocationName(translateCity(ipwhoisData.name));
+                fetchWeatherData(ipwhoisData.lat, ipwhoisData.lon);
+                return;
+            }
+
+            // All failed
+            console.warn('All IP geolocation providers failed.');
+            setWeather((prev: any) => ({ ...prev, loading: false, error: true }));
         };
 
         const initWeather = () => {

@@ -189,6 +189,7 @@ export default function AuroraNav() {
   const searchInputRef = useRef<HTMLInputElement>(null);
   const syncLockRef = useRef(false); // 同步锁，防止并发写入
   const isInitializedRef = useRef(false); // 初始化标记，避免首次加载触发同步
+  const dragOriginRef = useRef<any>(null); // Track original state for drag restoration
 
   // --- Scroll Detection (Throttled) ---
   useEffect(() => {
@@ -617,6 +618,8 @@ export default function AuroraNav() {
   const handleDragStart = (event: DragStartEvent) => {
     if (!isLoggedIn) return;
     setActiveDragId(event.active.id);
+    const item = sites.find(s => s.id === event.active.id);
+    if (item) dragOriginRef.current = { ...item };
   };
 
   const handleDragEnd = async (event: DragEndEvent) => {
@@ -692,45 +695,63 @@ export default function AuroraNav() {
       return;
     }
 
+    // --- Category Drop Logic (New) ---
+    // --- Category Drop Logic (New) ---
+    // If over is a Category (from CategoryHeader droppable)
+    if (over.data.current?.type === 'category' || categories.includes(over.id as string)) {
+      const categoryId = over.id as string;
+      const activeSite = sites.find(s => s.id === active.id);
+
+      if (activeSite) {
+        // If not already in category (DragOver didn't fire or failed?), move it.
+        // If already in category (DragOver worked), just persist.
+        let newSites = sites;
+        if (activeSite.category !== categoryId) {
+          newSites = sites.map(s => {
+            if (s.id === active.id) {
+              return { ...s, category: categoryId, parentId: null, order: 9999 }; // Append
+            }
+            return s;
+          });
+          setSites(newSites);
+        } else {
+          // Already moved by DragOver, use current sites
+          newSites = sites;
+        }
+
+        // Persist immediately
+        try {
+          await fetch('/api/sites', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(newSites)
+          });
+          showToast(`已移动到 "${categoryId}"`, 'success');
+        } catch (e) {
+          showToast('保存失败', 'error');
+        }
+        return;
+      }
+    }
+
     if (oldIndex === -1 || newIndex === -1) return;
 
     const activeItem = visualSites[oldIndex];
     const overItem = visualSites[newIndex];
 
     // --- FOLDER DROP LOGIC ---
-    // If dropping a SITE onto a FOLDER (that is not itself), move it inside.
-    // Ensure we are not dropping a folder into another folder (nested folders not fully supported/tested yet, but schema allows)
-    // For now, let's allow site -> folder.
-    // NOTE: 'overItem' is the item being hovered. 'activeItem' is the dragged item.
     if (overItem.type === 'folder' && activeItem.id !== overItem.id && activeItem.type !== 'folder') {
       const isAlreadyChild = activeItem.parentId === overItem.id;
       if (!isAlreadyChild) {
-        // Move activeItem INTO overItem
-        // 1. Update activeItem: parentId = overItem.id, category = overItem.category (optional, but good for data consistency if displayed flattened)
+        // Adopt the folder's category when dropped into it
         const updatedActive = { ...activeItem, parentId: overItem.id, category: overItem.category };
-
-        // 2. Remove activeItem from current view (since it entered the folder)
-        // Or just update state and let filtering handle it.
-        // But we need to update the 'sites' state array.
-
         const newSites = sites.map(s => s.id === activeItem.id ? updatedActive : s);
         setSites(newSites);
         showToast(`已移动到 "${overItem.name}"`, 'success');
 
-        // 3. Persist
         try {
-          // Single Update for the moved item is enough? No, we might mess up order if we rely on full list sync.
-          // But handleDragEnd usually does a full sync.
-          // Let's do a single PUT for the moved item or full sync?
-          // Full sync is safer for order, but here we changed parentId.
-          // Let's just update the single item via API for efficiency? 
-          // Wait, our API for PUT /api/sites expects an array for reordering OR a single object for update?
-          // Looking at route.ts (not visible here, but usually PUT array = reorder, PUT object = update)
-          // Actually previous code uses PUT with array for reorder.
-          // And PUT with body { ...data, id } for edit.
-          // So we should call PUT with the updated single item to change parentId.
           await fetch('/api/sites', {
-            method: 'PUT',
+            method: 'PUT', // Updated method per logic (assuming PUT handles updates)
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(updatedActive)
           });
@@ -738,14 +759,16 @@ export default function AuroraNav() {
           console.error("Failed to move to folder", e);
           showToast("移动失败", "error");
         }
-        return; // Stop standard reordering
+        return;
       }
     }
 
-    // 3. Handle Category Change
+    // 3. Handle Category Change (Standard Item-to-Item Drag)
     let newItem = { ...activeItem };
     if (activeTab === '全部' && activeItem.category !== overItem.category) {
       newItem.category = overItem.category;
+      // Also clear parentId if moving to a different category via item sort
+      if (newItem.parentId) newItem.parentId = null;
     }
 
     // 4. Move in Visual List
@@ -772,14 +795,50 @@ export default function AuroraNav() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(finalSites)
       });
-
-      if (!res.ok) {
-        console.error('Failed to save site order');
-        showToast('保存排序失败', 'error');
-      }
+      if (!res.ok) showToast('保存排序失败', 'error');
     } catch (error) {
-      console.error('Error saving site order:', error);
       showToast('保存排序出错', 'error');
+    }
+  };
+
+  /* DragOver Handler for Multi-Container Sorting */
+  const handleDragOver = (event: any) => {
+    const { active, over } = event;
+    if (!over) return;
+    if (active.id === over.id) return;
+
+    // 1. Handle Category Header Hover -> Optimistic Move
+    if (over.data.current?.type === 'category') {
+      const categoryId = over.id as string;
+      const activeSite = sites.find(s => s.id === active.id);
+      if (activeSite && activeSite.category !== categoryId) {
+        setSites(prev => prev.map(s =>
+          s.id === active.id
+            ? { ...s, category: categoryId, parentId: null, order: 9999 }
+            : s
+        ));
+      }
+      return;
+    }
+
+    // 2. Handle Cross-Container Sortable Item Drag
+    const activeSite = sites.find(s => s.id === active.id);
+    const overSite = sites.find(s => s.id === over.id);
+
+    if (!activeSite || !overSite) return;
+
+    // If moving between different categories (containers)
+    if (activeSite.category !== overSite.category) {
+      setSites(prev => {
+        const activeIndex = prev.findIndex(s => s.id === active.id);
+        const overIndex = prev.findIndex(s => s.id === over.id);
+
+        return prev.map(s =>
+          s.id === active.id
+            ? { ...s, category: overSite.category, parentId: null } // Adopt new category
+            : s
+        );
+      });
     }
   };
 
@@ -871,7 +930,7 @@ export default function AuroraNav() {
         }
       });
 
-      if (activeTab !== '全部') {
+      if (activeTab !== '全部' && !currentFolderId) {
         result = result.filter((site: any) => site.category === activeTab);
       }
     }
@@ -896,7 +955,7 @@ export default function AuroraNav() {
 
   return (
     <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleDragStart}
-      onDragEnd={handleDragEnd}>
+      onDragEnd={handleDragEnd} onDragOver={handleDragOver}>
       <div
         ref={containerRef}
         onMouseMove={handleMouseMove}
@@ -1174,6 +1233,7 @@ export default function AuroraNav() {
                         onContextMenu={handleContextMenu}
                         getCategoryColor={getCategoryColor}
                         onFolderClick={(folder: any) => setCurrentFolderId(folder.id)}
+                        sites={sites} // Pass sites for folder count
                       />
                     </div>
                   </main>
@@ -1194,9 +1254,9 @@ export default function AuroraNav() {
           </>
         )}
 
-        <DragOverlay adjustScale style={{ transformOrigin: '0 0 ' }}>
+        <DragOverlay style={{ transformOrigin: '0 0 ' }}>
           {activeDragSite ? (
-            <div style={{ width: '100%', height: layoutSettings.cardHeight }}>
+            <div style={{ width: parseInt(String(layoutSettings.cardWidth || 260)), height: layoutSettings.cardHeight }}>
               <SiteCard site={activeDragSite} isLoggedIn={false} isDarkMode={isDarkMode}
                 settings={layoutSettings} isOverlay />
             </div>
