@@ -1,0 +1,99 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider   = "prisma-client-js"
+  output     = "../generated/client"
+  engineType = "library"
+}
+
+datasource db {
+  provider = "sqlite"
+  // url      = env("DATABASE_URL")
+}
+
+model Site {
+  id            String   @id @default(uuid())
+  name          String
+  url           String
+  desc          String?
+  category      String
+  color         String?
+  icon          String?
+  iconType      String?
+  customIconUrl String?
+  titleFont     String?
+  descFont      String?
+  titleColor    String?
+  descColor     String?
+  titleSize     Int?
+  descSize      Int?
+  isHidden      Boolean  @default(false)
+  order         Int      @default(0)
+  type          String   @default("site") // 'site' | 'folder'
+  parentId      String? // For nested sites/folders
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model Category {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  color     String?
+  isHidden  Boolean  @default(false)
+  order     Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model User {
+  username     String   @id
+  passwordHash String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model GlobalSettings {
+  id                  Int      @id @default(1)
+  layout              String // JSON string
+  config              String // JSON string
+  theme               String // JSON string
+  searchEngine        String   @default("Google")
+  bingCacheMode       String   @default("keep-all") // 'keep-all' | 'keep-daily'
+  privatePasswordHash String? // Separate password for private mode
+  updatedAt           DateTime @updatedAt
+}
+
+model Wallpaper {
+  id        String   @id @default(uuid())
+  url       String // Local path
+  type      String // 'bing' | 'custom'
+  filename  String
+  size      Int?
+  createdAt DateTime @default(now())
+}
+
+model CustomFont {
+  id        String   @id @default(uuid())
+  name      String
+  family    String
+  url       String
+  provider  String   @default("google") // "google" or "custom"
+  createdAt DateTime @default(now())
+}
+
+model Todo {
+  id        String   @id @default(uuid())
+  text      String
+  done      Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Countdown {
+  id        String   @id @default(uuid())
+  label     String
+  date      String // Stored as ISO string or YYYY-MM-DD
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}

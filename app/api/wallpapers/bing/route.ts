@@ -12,3 +12,5 @@ export async function POST() {
         return NextResponse.json({ error: 'Sync failed' }, { status: 500 });
     }
 }
+
+export const dynamic = 'force-dynamic';

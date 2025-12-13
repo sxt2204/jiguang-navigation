@@ -61,3 +61,5 @@ export async function GET(request: Request) {
         hasMore: start + limit < results.length
     });
 }
+
+export const dynamic = 'force-dynamic';

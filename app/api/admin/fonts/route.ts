@@ -1,8 +1,7 @@
-
 import { PrismaClient } from '@prisma/client';
 import { NextResponse } from 'next/server';
+import { prisma } from '@/lib/prisma';
 
-const prisma = new PrismaClient();
 
 // GET: List all saved custom fonts
 export async function GET() {
@@ -49,3 +48,5 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: 'Failed to add font' }, { status: 500 });
     }
 }
+
+export const dynamic = 'force-dynamic';

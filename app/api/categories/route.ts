@@ -63,7 +63,7 @@ export async function PUT(request: Request) {
         }
     } catch (error) {
         console.error('[Categories API] Error:', error);
-        return NextResponse.json({ error: 'Failed to update category' }, { status: 500 });
+        return NextResponse.json({ error: 'Failed to update category', details: error instanceof Error ? error.message : String(error) }, { status: 500 });
     }
 }
 
@@ -87,3 +87,5 @@ export async function DELETE(request: Request) {
         }, { status: 500 });
     }
 }
+
+export const dynamic = 'force-dynamic';

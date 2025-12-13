@@ -25,3 +25,12 @@ Thumbs.db
 # 其他
 *.log
 coverage
+generated
+
+# Local Data (exclude from build)
+public/uploads
+prisma/*.db
+prisma/*.db-shm
+prisma/*.db-wal
+data
+

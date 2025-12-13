@@ -1,60 +1,83 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { downloadAndSaveIcon } from '@/lib/icon-downloader';
-import fs from 'fs';
-import path from 'path';
+
 
 const getFaviconUrl = (domain: string) => `https://www.google.com/s2/favicons?domain=${domain}&sz=128`;
+
+export const dynamic = 'force-dynamic';
 
 export async function POST(request: Request) {
     try {
         const sites = await prisma.site.findMany();
-        let count = 0;
+        let successCount = 0;
+        let failCount = 0;
 
-        for (const site of sites) {
-            let downloadUrl = '';
-            let shouldDownload = false;
+        // Process in batches of 5
+        const BATCH_SIZE = 5;
+        // Helper to check if file exists (needs fs import)
+        const fs = require('fs');
+        const path = require('path');
+        const publicDir = path.join(process.cwd(), 'public');
 
-            // Check if local file exists
-            let localFileExists = false;
-            let checkPath = '';
-            if (site.iconType === 'upload' && site.customIconUrl && site.customIconUrl.startsWith('/uploads/')) {
-                // Remove query parameters for file system check
-                const urlWithoutQuery = site.customIconUrl.split('?')[0];
-                const localPath = path.join(process.cwd(), 'public', urlWithoutQuery);
-                checkPath = localPath;
-                localFileExists = fs.existsSync(localPath);
+        for (let i = 0; i < sites.length; i += BATCH_SIZE) {
+            const batch = sites.slice(i, i + BATCH_SIZE);
+            await Promise.all(batch.map(async (site) => {
+                let downloadUrl = '';
+                let shouldDownload = false;
 
-                // Debug log for troubleshooting (will remove later)
-                if (!localFileExists) {
-                    console.log(`[Icon Sync Debug] File not found: ${localPath} (URL: ${site.customIconUrl})`);
-                }
-            }
+                const isAuto = site.iconType === 'auto' || !site.iconType;
+                const isUpload = site.iconType === 'upload';
 
-            // Case 1: Icon Type is Auto (or null), OR it's 'upload' but the file is missing
-            if ((site.iconType === 'auto' || !site.iconType) || (site.iconType === 'upload' && !localFileExists)) {
                 if (site.url) {
                     try {
                         const domain = new URL(site.url).hostname;
-                        downloadUrl = getFaviconUrl(domain);
-                        shouldDownload = true;
+                        const potentialDlUrl = getFaviconUrl(domain);
+
+                        if (isAuto) {
+                            downloadUrl = potentialDlUrl;
+                            shouldDownload = true;
+                        } else if (isUpload) {
+                            // Smart Repair Logic
+                            const customUrl = site.customIconUrl || '';
+
+                            // 1. If it's still a remote Google URL, we should cache it.
+                            if (customUrl.includes('google.com/s2/favicons')) {
+                                downloadUrl = customUrl; // or potentialDlUrl, roughly same
+                                shouldDownload = true;
+                            }
+                            // 2. If it's a local file path, check if it exists
+                            else if (customUrl.startsWith('/uploads/')) {
+                                // Remove query params for check
+                                const cleanPath = customUrl.split('?')[0];
+                                const fullPath = path.join(publicDir, cleanPath);
+                                if (!fs.existsSync(fullPath)) {
+                                    // File missing, download it again
+                                    downloadUrl = potentialDlUrl;
+                                    shouldDownload = true;
+                                }
+                            }
+                        }
                     } catch (e) { }
                 }
-            }
-            // Case 2: Icon Type is Upload, but URL is remote (http...) - This might be a legacy case or user manually entered a URL
-            else if (site.iconType === 'upload' && site.customIconUrl && site.customIconUrl.startsWith('http')) {
-                downloadUrl = site.customIconUrl;
-                shouldDownload = true;
-            }
 
-            if (shouldDownload && downloadUrl) {
-                // We await here to avoid overwhelming the server/network with hundreds of requests at once
-                await downloadAndSaveIcon(site.id, downloadUrl);
-                count++;
-            }
+                if (shouldDownload && downloadUrl) {
+                    const result = await downloadAndSaveIcon(site.id, downloadUrl);
+                    if (result) {
+                        successCount++;
+                    } else {
+                        failCount++;
+                    }
+                }
+            }));
         }
 
-        return NextResponse.json({ success: true, processed: count });
+        return NextResponse.json({
+            success: true,
+            processed: successCount,
+            failed: failCount,
+            total: sites.length
+        });
     } catch (error) {
         console.error('Sync error:', error);
         return NextResponse.json({ error: 'Failed to sync icons' }, { status: 500 });

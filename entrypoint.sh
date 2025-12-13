@@ -21,9 +21,8 @@ if [ ! -L /app/public/uploads ]; then
 fi
 
 # 确保数据目录和上传目录有写入权限
-chmod -R 777 /app/data
-chmod -R 777 /app/public/uploads
-chmod 666 /app/data/dev.db 2>/dev/null || true
+chmod -R 777 /app/data 2>/dev/null || true
+chmod -R 777 /app/public/uploads 2>/dev/null || true
 
 # 启动应用
 exec node server.js
