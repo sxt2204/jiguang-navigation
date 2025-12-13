@@ -31,8 +31,11 @@ const LottieWeatherIcon = ({ code, size = 48 }: { code: number; size?: number })
 
         // Fetch animation data
         fetch(url)
-            .then(res => res.json())
-            .then(data => setAnimationData(data))
+            .then(res => {
+                if (!res.ok) return null;
+                return res.json();
+            })
+            .then(data => { if (data) setAnimationData(data); })
             .catch(() => setAnimationData(null));
     }, [code]);
 
@@ -176,14 +179,20 @@ export const WidgetDashboard = React.memo(function WidgetDashboard({ isDarkMode,
     // Fetch Todos and Countdowns on mount
     useEffect(() => {
         fetch('/api/todos')
-            .then(res => res.json())
+            .then(res => {
+                if (!res.ok) return [];
+                return res.json();
+            })
             .then(data => { if (Array.isArray(data)) setTodos(data); })
-            .catch(err => console.error('Failed to load todos', err));
+            .catch(err => console.warn('Silently failed to load todos', err));
 
         fetch('/api/countdowns')
-            .then(res => res.json())
+            .then(res => {
+                if (!res.ok) return [];
+                return res.json();
+            })
             .then(data => { if (Array.isArray(data)) setCountdowns(data); })
-            .catch(err => console.error('Failed to load countdowns', err));
+            .catch(err => console.warn('Silently failed to load countdowns', err));
     }, []);
 
     // Animation counter for stats
@@ -234,6 +243,7 @@ export const WidgetDashboard = React.memo(function WidgetDashboard({ isDarkMode,
         const fetchMarketData = async () => {
             try {
                 const res = await fetch('/api/market');
+                if (!res.ok) return; // Silent fail
                 const data = await res.json();
                 if (Array.isArray(data)) {
                     setMarketData(data);
@@ -255,6 +265,7 @@ export const WidgetDashboard = React.memo(function WidgetDashboard({ isDarkMode,
                 const res = await fetch(
                     `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current=temperature_2m,apparent_temperature,weather_code,wind_speed_10m&daily=weathercode,temperature_2m_max,temperature_2m_min,uv_index_max&timezone=auto`
                 );
+                if (!res.ok) throw new Error('Weather API failed'); // Keep this error as it's external and useful to debug
                 const data = await res.json();
 
                 const dailyForecast = data.daily?.time?.slice(1, 7).map((t: string, i: number) => ({

@@ -128,6 +128,10 @@ export function Header({
                             <input
                                 ref={searchInputRef}
                                 type="text"
+                                name="search_query_unique_id_v1"
+                                autoComplete="new-password"
+                                data-lpignore="true"
+                                data-form-type="other"
                                 placeholder={currentEngine.placeholder}
                                 value={searchQuery}
                                 onFocus={() => setIsSearchFocused(true)}
@@ -153,7 +157,7 @@ export function Header({
                                     </>
                                 )}
                             </div>
-                            {searchSuggestions.length > 0 && (
+                            {isSearchFocused && searchSuggestions.length > 0 && (
                                 <div
                                     className={`absolute top-full left-4 right-4 mt-2 rounded-xl border shadow-xl z-50 overflow-hidden animate-in slide-in-from-top-2 fade-in duration-200 ${isDarkMode ? 'bg-slate-800 border-white/10' : 'bg-white border-slate-100'}`}>
                                     {searchSuggestions.map((s, i) => (<div key={i} onClick={() => {

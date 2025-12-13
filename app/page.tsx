@@ -379,24 +379,17 @@ export default function AuroraNav() {
     document.title = appConfig.siteTitle;
   }, [appConfig.siteTitle]);
 
-  // --- Sync Settings & Categories to DB ---
+  const settingsSyncLock = useRef(false);
+  const categoriesSyncLock = useRef(false);
+  const sitesSyncLock = useRef(false);
+
+  // 1. Sync Settings
   useEffect(() => {
-    // 检查：必须登录且初始化完成
     if (!isLoggedIn || !isInitializedRef.current) return;
-
     const timer = setTimeout(async () => {
-      // 同步锁检查，防止并发执行
-      if (syncLockRef.current) {
-        console.log('[Sync] Skipped - already syncing');
-        return;
-      }
-      syncLockRef.current = true;
-
+      if (settingsSyncLock.current) return;
+      settingsSyncLock.current = true;
       try {
-        console.log('[Sync] Starting...');
-        // 串行执行，避免SQLite并发写入冲突
-        // 1. Sync Settings
-        console.log('[Sync] Saving layoutSettings:', layoutSettings);
         await fetch('/api/settings', {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
@@ -407,40 +400,87 @@ export default function AuroraNav() {
             searchEngine: searchEngine
           })
         });
+        showToast('设置已保存', 'success');
+      } catch (e) {
+        showToast('设置保存失败', 'error');
+      } finally {
+        settingsSyncLock.current = false;
+      }
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [layoutSettings, appConfig, isDarkMode, searchEngine, isLoggedIn]);
 
-        // 2. Sync Categories (Order + Colors + Hidden)
+  // 2. Sync Categories
+  useEffect(() => {
+    if (!isLoggedIn || !isInitializedRef.current) return;
+    const timer = setTimeout(async () => {
+      if (categoriesSyncLock.current) return;
+      categoriesSyncLock.current = true;
+      try {
         const categoryPayload = categories.map((name, index) => ({
           name,
           order: index,
           color: categoryColors[name],
           isHidden: hiddenCategories.includes(name)
         }));
-
         await fetch('/api/categories', {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(categoryPayload)
         });
+        // Silent success for categories to avoid noise, or log
+        console.log('Categories synced');
+      } catch (e) {
+        showToast('分类保存失败', 'error');
+      } finally {
+        categoriesSyncLock.current = false;
+      }
+    }, 500); // Debounce reduced to 500ms
+    return () => clearTimeout(timer);
+  }, [categories, categoryColors, hiddenCategories, isLoggedIn]);
 
-        // 3. Sync Sites Order
-        const sitePayload = sites.map((s, index) => ({ id: s.id, order: index, isHidden: s.isHidden }));
+  // 3. Sync Sites
+  useEffect(() => {
+    if (!isLoggedIn || !isInitializedRef.current) return;
+    const timer = setTimeout(async () => {
+      if (sitesSyncLock.current) return;
+      sitesSyncLock.current = true;
+      try {
+        const sitePayload = sites.map((s, index) => ({ id: s.id, order: index, isHidden: s.isHidden, category: s.category, parentId: s.parentId }));
         await fetch('/api/sites', {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(sitePayload)
         });
-
-        console.log('[Sync] Completed');
-        showToast('配置已自动保存', 'success');
-      } catch (error) {
-        console.error('[Sync] Error:', error);
-        showToast('配置保存失败', 'error');
+        showToast('站点布局已保存', 'success');
+      } catch (e) {
+        showToast('站点保存失败', 'error');
       } finally {
-        syncLockRef.current = false;
+        sitesSyncLock.current = false;
       }
-    }, 500); // Reduce debounce to 500ms for faster save on refresh
+    }, 800); // Debounce reduced to 800ms for faster feedback
     return () => clearTimeout(timer);
-  }, [layoutSettings, appConfig, isDarkMode, categories, sites, isLoggedIn]);
+  }, [sites, isLoggedIn]);
+
+  // --- Real-time Local Cache Update (Fixes Layout Flash) ---
+  useEffect(() => {
+    if (!isInitializedRef.current) return;
+    const cacheData = {
+      sites,
+      categories: categories.map(c => ({
+        name: c,
+        color: categoryColors[c],
+        isHidden: hiddenCategories.includes(c)
+      })),
+      settings: {
+        layout: layoutSettings,
+        config: appConfig,
+        theme: { isDarkMode },
+        searchEngine
+      }
+    };
+    localStorage.setItem('aurora_cache', JSON.stringify(cacheData));
+  }, [sites, categories, categoryColors, hiddenCategories, layoutSettings, appConfig, isDarkMode, searchEngine]);
 
 
   // --- Wallpaper Logic ---
@@ -683,15 +723,7 @@ export default function AuroraNav() {
       setSites(newSites);
       showToast('已移出文件夹', 'success');
 
-      try {
-        await fetch('/api/sites', {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ...realActive, parentId: null })
-        });
-      } catch (e) {
-        showToast('移动失败', 'error');
-      }
+      // Removed redundant fetch; useEffect handles sync
       return;
     }
 
@@ -719,17 +751,7 @@ export default function AuroraNav() {
           newSites = sites;
         }
 
-        // Persist immediately
-        try {
-          await fetch('/api/sites', {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(newSites)
-          });
-          showToast(`已移动到 "${categoryId}"`, 'success');
-        } catch (e) {
-          showToast('保存失败', 'error');
-        }
+        // Persist immediately via useEffect
         return;
       }
     }
@@ -749,16 +771,7 @@ export default function AuroraNav() {
         setSites(newSites);
         showToast(`已移动到 "${overItem.name}"`, 'success');
 
-        try {
-          await fetch('/api/sites', {
-            method: 'PUT', // Updated method per logic (assuming PUT handles updates)
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(updatedActive)
-          });
-        } catch (e) {
-          console.error("Failed to move to folder", e);
-          showToast("移动失败", "error");
-        }
+        // Persist via useEffect
         return;
       }
     }
@@ -789,16 +802,17 @@ export default function AuroraNav() {
 
     setSites(finalSites);
 
-    try {
-      const res = await fetch('/api/sites', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(finalSites)
-      });
-      if (!res.ok) showToast('保存排序失败', 'error');
-    } catch (error) {
-      showToast('保存排序出错', 'error');
-    }
+    // Persist via useEffect
+    // try {
+    //   const res = await fetch('/api/sites', {
+    //     method: 'PUT',
+    //     headers: { 'Content-Type': 'application/json' },
+    //     body: JSON.stringify(finalSites)
+    //   });
+    //   if (!res.ok) showToast('保存排序失败', 'error');
+    // } catch (error) {
+    //   showToast('保存排序出错', 'error');
+    // }
   };
 
   /* DragOver Handler for Multi-Container Sorting */

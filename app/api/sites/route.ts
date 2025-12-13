@@ -64,21 +64,28 @@ export async function POST(request: Request) {
             }
         });
 
+        console.log(`[Sites API] Created ${site.type}: ${site.id} (${site.name})`);
+
         // If we used a temp ID for filename, we might want to rename it, but it's fine for now.
         // Ideally we should use the real ID.
         // If we saved base64 with 'temp', we can't easily rename without FS ops.
         // Optimization: If we really want the ID in filename, we'd need to create site first then save file then update site.
         // But for now, let's just use the timestamp in filename which is unique enough.
 
-        // Trigger background download for HTTP urls
+        // Handle download - await it to ensure it completes, or log error
+        // Note: In Vercel serverless this might still time out if too long, but for local/VPS it's better to await or use waitUntil
         if (shouldDownload && downloadUrl) {
-            downloadAndSaveIcon(site.id, downloadUrl).catch(console.error);
+            console.log(`[Sites API] Triggering icon download for ${site.id} from ${downloadUrl}`);
+            await downloadAndSaveIcon(site.id, downloadUrl);
         }
 
         return NextResponse.json(site);
     } catch (error) {
-        console.error('Create Site Error:', error);
-        return NextResponse.json({ error: 'Failed to create site' }, { status: 500 });
+        console.error('[Sites API] Create Site Error:', error);
+        return NextResponse.json({
+            error: 'Failed to create site',
+            details: error instanceof Error ? error.message : String(error)
+        }, { status: 500 });
     }
 }
 
@@ -159,12 +166,14 @@ export async function PUT(request: Request) {
         });
 
         if (shouldDownload && downloadUrl) {
-            downloadAndSaveIcon(site.id, downloadUrl).catch(console.error);
+            console.log(`[Sites API] Triggering icon download for ${site.id} from ${downloadUrl}`);
+            await downloadAndSaveIcon(site.id, downloadUrl);
         }
 
         return NextResponse.json(site);
     } catch (error) {
-        return NextResponse.json({ error: 'Failed to update site' }, { status: 500 });
+        console.error('[Sites API] Update Site Error:', error);
+        return NextResponse.json({ error: 'Failed to update site', details: String(error) }, { status: 500 });
     }
 }
 
@@ -207,3 +216,5 @@ export async function DELETE(request: Request) {
         return NextResponse.json({ error: 'Failed to delete site' }, { status: 500 });
     }
 }
+
+export const dynamic = 'force-dynamic';

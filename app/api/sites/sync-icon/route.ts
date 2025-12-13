@@ -29,11 +29,18 @@ export async function POST(request: Request) {
         }
 
         // Trigger download
-        await downloadAndSaveIcon(site.id, downloadUrl);
+        const result = await downloadAndSaveIcon(site.id, downloadUrl);
 
-        return NextResponse.json({ success: true });
+        if (!result) {
+            console.error(`[Sync API] Failed to download icon for site ${site.id} from ${downloadUrl}`);
+            return NextResponse.json({ error: 'Failed to download icon' }, { status: 500 });
+        }
+
+        return NextResponse.json({ success: true, url: result });
     } catch (error) {
         console.error('Sync icon error:', error);
         return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
     }
 }
+
+export const dynamic = 'force-dynamic';

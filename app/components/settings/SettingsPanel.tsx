@@ -1540,18 +1540,22 @@ export function SettingsPanel({
                                                     <span className="text-sm font-bold text-indigo-500">访问密码</span>
                                                 </div>
                                                 <div className="flex gap-2">
-                                                    <Input
+                                                    <input
                                                         type="password"
                                                         placeholder="设置独立访问密码 (留空则使用管理员密码)"
-                                                        className="bg-white dark:bg-slate-900"
-                                                        onChange={(e) => {
-                                                            // Storing in a ref or local state would be better, but for simplicity:
-                                                            // We'll use a local state or just fire immediately on blur / button click.
-                                                            // Let's add a "Save" button for this specific field or use a local state.
-                                                            // Since SettingsPanel is large, let's use a local variable inside the component logic above, but here I am inside JSX.
-                                                            // I'll add a small inner form or just an input with a button.
-                                                        }}
+                                                        className={`flex-1 h-10 w-full rounded-md border px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 ${isDarkMode ? 'bg-slate-900 border-white/10' : 'bg-white border-slate-200'}`}
                                                         id="private-pwd-input"
+                                                        autoComplete="new-password"
+                                                        data-lpignore="true"
+                                                        name={`pwd_${Math.floor(Math.random() * 10000)}`}
+                                                        readOnly
+                                                        onFocus={(e) => {
+                                                            e.target.readOnly = false;
+                                                            // Optional: clear placeholder or visual cue
+                                                        }}
+                                                        onBlur={(e) => {
+                                                            e.target.readOnly = true;
+                                                        }}
                                                     />
                                                     <Button onClick={async () => {
                                                         const input = document.getElementById('private-pwd-input') as HTMLInputElement;

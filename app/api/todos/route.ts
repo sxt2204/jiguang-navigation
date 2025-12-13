@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '@/lib/prisma';
 
-const prisma = new PrismaClient();
 
 export async function GET() {
     try {
@@ -25,3 +24,5 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: 'Failed to create todo' }, { status: 500 });
     }
 }
+
+export const dynamic = 'force-dynamic';

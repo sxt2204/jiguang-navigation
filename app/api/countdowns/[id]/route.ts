@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '@/lib/prisma';
 
-const prisma = new PrismaClient();
 
 export async function DELETE(
     request: Request,
@@ -17,3 +16,5 @@ export async function DELETE(
         return NextResponse.json({ error: 'Failed to delete countdown' }, { status: 500 });
     }
 }
+
+export const dynamic = 'force-dynamic';

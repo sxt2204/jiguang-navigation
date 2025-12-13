@@ -58,9 +58,9 @@ Built with the latest web technologies, it offers a stunning visual experience w
   **智能搜索**：实时筛选本地站点，支持切换多种搜索引擎并自动记忆您的偏好。
 
 - **Breadcrumb Navigation**: Interactive pill-style breadcrumbs for folder navigation.  
-  **面包屑导航**：交互式胶囊面包屑。
+  **站点导航**：交互式胶囊导航。
   - *Drag Support*: Drop items onto the "Home" breadcrumb to move them out of folders.  
-    *拖拽支持*：支持将项目拖拽至“首页”面包屑以快速移出文件夹。
+    *拖拽支持*：支持将项目拖拽至“首页”导航以快速移出文件夹。
 
 ### 🧩 HTML5 Widgets | HTML5 组件
 
