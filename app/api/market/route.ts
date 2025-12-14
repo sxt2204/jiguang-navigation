@@ -7,7 +7,7 @@ const SYMBOLS = [
     { id: 'eth', symbol: 'ETH-USD', name: 'ETH', type: 'crypto' },
 ];
 
-const TIMEOUT_MS = 3000;
+const TIMEOUT_MS = 5000;
 
 async function fetchWithTimeout(url: string, options: RequestInit = {}) {
     const controller = new AbortController();
@@ -22,68 +22,78 @@ async function fetchWithTimeout(url: string, options: RequestInit = {}) {
 
 export async function GET() {
     try {
+        // Tencent (qtimg) API supports batch query
+        // Symbols: sh000001 (上证), us.IXIC (Nasdaq), us.DJI (Dow), us.SPX (S&P 500)
+        // Mapping:
+        // ashare -> sh000001
+        // nasdaq -> us.IXIC
+        // btc -> N/A (Tencent might not have crypto straightforwardly, or use different code. For now keep separate or find code)
+        // Let's use Tencent for stocks and Yahoo fallback for others if Tencent fails or doesn't support.
+
+        const STOCK_MAP: Record<string, string> = {
+            'ashare': 'sh000001',
+            'nasdaq': 'us.IXIC',
+            'sp500': 'us.INX', // Tencent code for S&P might vary, let's try us.INX or leave it.
+            // 'btc': 'btc_usd' // Crypto support uncertain, stick to Yahoo/CoinCap for Crypto if improved later.
+        };
+
         const promises = SYMBOLS.map(async (item) => {
-            // Sina API for A-Share and Nasdaq (US Indices)
-            if (item.id === 'ashare' || item.id === 'nasdaq') {
+            // 1. Tencent API for Stocks (A-Share & US Indices)
+            if (STOCK_MAP[item.id]) {
                 try {
-                    const sinaCode = item.id === 'ashare' ? 'sh000001' : 'gb_ixic'; // gb_ixic for Nasdaq
-                    const response = await fetchWithTimeout(`http://hq.sinajs.cn/list=${sinaCode}`, {
-                        headers: { 'Referer': 'https://finance.sina.com.cn/' },
+                    const code = STOCK_MAP[item.id];
+                    // qtimg url: http://qt.gtimg.cn/q=sh000001,us.IXIC
+                    // We can do individual fetches or batch. Individual is fine for small count.
+                    const response = await fetchWithTimeout(`http://qt.gtimg.cn/q=${code}`, {
+                        headers: { 'Referer': 'https://finance.qq.com/' },
                         next: { revalidate: 30 }
                     });
 
-                    if (!response.ok) throw new Error('Sina API failed');
+                    if (!response.ok) throw new Error('Tencent API failed');
+
+                    // text format: v_sh000001="1:上证指数~2:3360.28..."
+                    // A-Share: v_sh000001="51~上证指数~000001~3367.99~3370.40~3356.12~3367.99...~32（涨跌）~0.96（涨跌幅）..."
+                    // US Stock: v_us_IXIC="200~纳斯达克~IXIC~19742.77...~3（涨跌）~0.02（涨跌幅）..."
+                    // Format varies slightly.
+                    // Common pattern: splitted by '~'
+                    // Index 1: Name, Index 3: Current Price, Index 31: Change, Index 32: Percent (Check specific indices)
 
                     const text = await response.text();
+                    // Basic parsing
                     const matches = text.match(/="(.*)";/);
-
                     if (matches && matches[1]) {
-                        const parts = matches[1].split(',');
-                        let price = 0;
-                        let change = 0;
-                        let percent = 0;
+                        const parts = matches[1].split('~');
+                        if (parts.length > 30) {
+                            const name = parts[1];
+                            const price = parseFloat(parts[3]);
+                            const change = parseFloat(parts[31]);
+                            const percent = parseFloat(parts[32]);
 
-                        if (item.id === 'ashare') {
-                            // A-Share Format: name, open, prevClose, price, ...
-                            const open = parseFloat(parts[1]);
-                            const previousClose = parseFloat(parts[2]);
-                            price = parseFloat(parts[3]);
-
-                            if (price > 0 && previousClose > 0) {
-                                change = price - previousClose;
-                                percent = (change / previousClose) * 100;
+                            if (!isNaN(price)) {
+                                return {
+                                    id: item.id,
+                                    name: item.name, // Use local name or parts[1]
+                                    symbol: item.symbol,
+                                    price,
+                                    change,
+                                    percent,
+                                    type: item.type,
+                                    currency: item.id === 'ashare' ? 'CNY' : 'USD'
+                                };
                             }
-                        } else {
-                            // US Stock (gb_) Format: name, price, percent, time, change, ...
-                            // Example: "纳斯达克,17629.23,-1.69,2025-12-13...,-398.68..."
-                            price = parseFloat(parts[1]);
-                            percent = parseFloat(parts[2]); // Sina gives percent directly like -1.69
-                            change = parseFloat(parts[4]);
-                        }
-
-                        // Valid data check
-                        if (price > 0) {
-                            // console.log(`[MarketAPI] Sina ${item.symbol}:`, { price, change, percent });
-                            return {
-                                id: item.id,
-                                name: item.name,
-                                symbol: item.symbol,
-                                price,
-                                change,
-                                percent,
-                                type: item.type,
-                                currency: 'CNY', // Sina usually US returns in USD implicitly but let's keep consistent or fix later if needed. For display logic.
-                            };
                         }
                     }
-                    throw new Error('Sina API invalid data');
-                } catch (error) {
-                    console.error(`Error fetching Sina ${item.symbol}:`, error);
-                    // Fallback to Yahoo for Nasdaq if Sina failed? 
-                    // If it is ashare, no fallback. If nasdaq, maybe fallback.
-                    if (item.id === 'ashare') return errorResult(item);
+                    throw new Error('Tencent API invalid data');
+                } catch (error: any) {
+                    const isTimeout = error.name === 'AbortError' || error.message.includes('Timeout') || error.code === 'UND_ERR_CONNECT_TIMEOUT';
+                    console.warn(`[MarketAPI] Tencent ${item.symbol} fetch failed (${isTimeout ? 'Timeout' : error.message}).`);
+                    // Fallback to Yahoo below
+                    if (item.id === 'ashare') return errorResult(item); // No yahoo fallback for A-share usually
                 }
             }
+
+            // 2. Crypto (CoinCap) or Yahoo Fallback
+            // ... (Rest of existing Yahoo/Crypto logic)
 
             // Fallback / Default: Yahoo Finance
             try {
@@ -122,8 +132,7 @@ export async function GET() {
                     currency: meta.currency,
                 };
             } catch (error) {
-                // Log only message to reduce noise
-                console.error(`Error fetching ${item.symbol}:`, error instanceof Error ? error.message : error);
+                console.warn(`[MarketAPI] Yahoo ${item.symbol} fetch failed:`, error instanceof Error ? error.message : error);
                 return errorResult(item);
             }
         });

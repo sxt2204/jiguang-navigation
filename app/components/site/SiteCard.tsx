@@ -46,8 +46,12 @@ export const SiteCard = React.memo(function SiteCard({
         if (site.iconType === 'upload' && site.customIconUrl) {
             setImgSrc(site.customIconUrl);
             setHasError(false);
+        } else if (site.iconType === 'auto' && site.icon && (site.icon.startsWith('/') || site.icon.startsWith('http'))) {
+            // Priority: Local Cache for Auto mode
+            setImgSrc(site.icon);
+            setHasError(false);
         }
-    }, [site.customIconUrl, site.iconType]);
+    }, [site.customIconUrl, site.iconType, site.icon]);
 
     const handleClick = (e: React.MouseEvent) => {
         // Assuming isDragging is defined elsewhere or will be added.
@@ -240,24 +244,43 @@ export const SiteCard = React.memo(function SiteCard({
     const descFontSize = site.descSize || settings.globalDescSize;
 
     // Icon Rendering
+    // Unified Logic for both Upload and Auto (with Cache)
     let renderIcon;
     let showImage = false;
     let currentSrc = '';
 
     if ((site.iconType === 'auto' || site.iconType === 'upload') && site.type !== 'folder') {
-        if (site.iconType === 'upload' && imgSrc && !hasError) {
+        const isLocalAttempt = (site.iconType === 'upload') ||
+            (site.iconType === 'auto' && site.icon && (site.icon.startsWith('/') || site.icon.startsWith('http')));
+
+        if (isLocalAttempt && imgSrc && !hasError) {
+            // Use local/cached image first
             currentSrc = imgSrc;
         } else {
+            // Fallback to providers
             try {
                 const domain = new URL(site.url).hostname;
-                const providerIndex = site.iconType === 'upload' ? (iconState - 1) : iconState;
-                currentSrc = FAVICON_PROVIDERS[providerIndex % FAVICON_PROVIDERS.length](domain);
+                // If we HAD a local attempt but it failed, offset index to start at 0
+                // If we typically rely on iconState:
+                // Normal Auto (No cache): iconState starts 0. index 0.
+                // Upload/AutoCache (Failed): iconState>=1. index 0. -> iconState-1.
+
+                let providerIndex = iconState;
+                if (isLocalAttempt) {
+                    providerIndex = iconState - 1;
+                }
+
+                if (providerIndex >= 0 && providerIndex < FAVICON_PROVIDERS.length) {
+                    currentSrc = FAVICON_PROVIDERS[providerIndex](domain);
+                } else {
+                    currentSrc = ''; // Exhausted providers
+                }
             } catch (e) {
                 currentSrc = '';
             }
         }
 
-        if (currentSrc && iconState < (FAVICON_PROVIDERS.length + 2)) {
+        if (currentSrc) {
             showImage = true;
         }
     }
@@ -275,7 +298,11 @@ export const SiteCard = React.memo(function SiteCard({
                     height={40}
                     className="object-contain w-full h-full"
                     onError={() => {
-                        if (site.iconType === 'upload') {
+                        const isLocalAttempt = (site.iconType === 'upload') ||
+                            (site.iconType === 'auto' && site.icon && (site.icon.startsWith('/') || site.icon.startsWith('http')));
+
+                        // If local attempt (Upload or Cached Auto) failed, mark error to trigger fallback
+                        if (isLocalAttempt && !hasError) {
                             setHasError(true);
                         }
                         setIconState(prev => prev + 1);

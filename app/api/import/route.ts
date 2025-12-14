@@ -68,7 +68,9 @@ export async function POST(request: Request) {
                         titleColor: site.titleColor,
                         descColor: site.descColor,
                         titleSize: site.titleSize,
-                        descSize: site.descSize
+                        descSize: site.descSize,
+                        type: site.type || 'site',
+                        parentId: site.parentId || null
                     },
                     create: {
                         id: site.id,
@@ -87,7 +89,9 @@ export async function POST(request: Request) {
                         titleColor: site.titleColor,
                         descColor: site.descColor,
                         titleSize: site.titleSize,
-                        descSize: site.descSize
+                        descSize: site.descSize,
+                        type: site.type || 'site',
+                        parentId: site.parentId || null
                     }
                 });
             }
