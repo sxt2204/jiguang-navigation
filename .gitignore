@@ -50,3 +50,10 @@ next-env.d.ts
 # System
 Thumbs.db
 /lib/generated/prisma
+
+# wallpapers
+/public/uploads/wallpapers
+
+# icons
+/public/uploads/icons
+

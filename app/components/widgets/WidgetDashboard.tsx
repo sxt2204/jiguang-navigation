@@ -261,33 +261,43 @@ export const WidgetDashboard = React.memo(function WidgetDashboard({ isDarkMode,
     useEffect(() => {
         const fetchWeatherData = async (latitude: number, longitude: number) => {
             try {
-                // Fetch current + daily forecast (6 days)
-                const res = await fetch(
-                    `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current=temperature_2m,apparent_temperature,weather_code,wind_speed_10m&daily=weathercode,temperature_2m_max,temperature_2m_min,uv_index_max&timezone=auto`
-                );
-                if (!res.ok) throw new Error('Weather API failed'); // Keep this error as it's external and useful to debug
-                const data = await res.json();
+                // Faraday: Fetch Weather (Forest & Daily) + Air Quality (AQI) in parallel
+                // Open-Meteo Weather API
+                const weatherPromise = fetch(
+                    `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current=temperature_2m,apparent_temperature,weather_code,wind_speed_10m,relative_humidity_2m&daily=weathercode,temperature_2m_max,temperature_2m_min,uv_index_max&timezone=auto`
+                ).then(res => res.json());
 
-                const dailyForecast = data.daily?.time?.slice(1, 7).map((t: string, i: number) => ({
+                // Open-Meteo Air Quality API
+                const airPromise = fetch(
+                    `https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${latitude}&longitude=${longitude}&current=us_aqi`
+                ).then(res => res.json());
+
+                const [weatherData, airData] = await Promise.all([weatherPromise, airPromise]);
+
+                if (weatherData.error) throw new Error('Weather API error');
+
+                const dailyForecast = weatherData.daily?.time?.slice(1, 7).map((t: string, i: number) => ({
                     time: t,
-                    code: data.daily.weathercode[i + 1],
-                    max: data.daily.temperature_2m_max[i + 1],
-                    min: data.daily.temperature_2m_min[i + 1]
+                    code: weatherData.daily.weathercode[i + 1],
+                    max: weatherData.daily.temperature_2m_max[i + 1],
+                    min: weatherData.daily.temperature_2m_min[i + 1]
                 })) || [];
 
-                const uv = data.daily?.uv_index_max?.[0] || 0;
+                const uv = weatherData.daily?.uv_index_max?.[0] || 0;
+                const humidity = weatherData.current?.relative_humidity_2m || 50;
+                const aqi = airData?.current?.us_aqi || null;
 
                 setWeather((prev: any) => ({
                     ...prev,
-                    temp: data.current?.temperature_2m,
-                    feelsLike: data.current?.apparent_temperature,
-                    code: data.current?.weather_code,
-                    windSpeed: data.current?.wind_speed_10m,
-                    humidity: 50,
+                    temp: weatherData.current?.temperature_2m,
+                    feelsLike: weatherData.current?.apparent_temperature,
+                    code: weatherData.current?.weather_code,
+                    windSpeed: weatherData.current?.wind_speed_10m,
+                    humidity: humidity,
                     hourly: [],
                     daily: dailyForecast,
                     uv: Math.round(uv),
-                    aqi: Math.floor(Math.random() * 100) + 20,
+                    aqi: aqi, // Real AQI
                     loading: false,
                     error: false
                 }));
@@ -309,7 +319,11 @@ export const WidgetDashboard = React.memo(function WidgetDashboard({ isDarkMode,
                 }
             };
 
-            let name = await tryApi('https://get.geojs.io/v1/ip/geo.json', (data) => data.city || data.region);
+            let name = await tryApi('https://ipapi.co/json/', (data) => data.city); // First attempt with ipapi.co
+
+            if (!name || name === '本地') {
+                name = await tryApi('https://get.geojs.io/v1/ip/geo.json', (data) => data.city || data.region);
+            }
 
             if (!name || name === '本地') {
                 name = await tryApi('https://ipwho.is/', (data) => data.city || data.region);
@@ -333,7 +347,20 @@ export const WidgetDashboard = React.memo(function WidgetDashboard({ isDarkMode,
                 }
             };
 
-            // 1. Try GeoJS
+            // 1. Try ipapi.co (High accuracy for city/latlong)
+            const ipapiData = await tryProvider('https://ipapi.co/json/', (d) => ({
+                lat: d.latitude,
+                lon: d.longitude,
+                name: d.city
+            }));
+
+            if (ipapiData && ipapiData.lat && ipapiData.lon) {
+                if (ipapiData.name) setLocationName(translateCity(ipapiData.name));
+                fetchWeatherData(ipapiData.lat, ipapiData.lon);
+                return;
+            }
+
+            // 2. Try GeoJS
             const geojsData = await tryProvider('https://get.geojs.io/v1/ip/geo.json', (d) => ({
                 lat: d.latitude ? parseFloat(d.latitude) : null,
                 lon: d.longitude ? parseFloat(d.longitude) : null,
@@ -346,7 +373,7 @@ export const WidgetDashboard = React.memo(function WidgetDashboard({ isDarkMode,
                 return;
             }
 
-            // 2. Try IPWhoIs (Fallback)
+            // 3. Try IPWhoIs (Fallback)
             const ipwhoisData = await tryProvider('https://ipwho.is/', (d) => ({
                 lat: d.latitude,
                 lon: d.longitude,
