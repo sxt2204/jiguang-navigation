@@ -30,6 +30,17 @@ RUN npx prisma generate
 # 构建应用
 RUN npm run build
 
+# Size optimization: cleanup unnecessary files in standalone
+RUN find .next/standalone -name "*.map" -type f -delete && \
+    find .next/standalone -name "*.md" -type f -delete && \
+    find .next/standalone -name "LICENSE" -type f -delete && \
+    find .next/standalone -name "README*" -type f -delete && \
+    find .next/standalone -name "*.ts" -type f -delete && \
+    find .next/standalone -name "*.tsx" -type f -delete && \
+    find .next/standalone -type d -name "__tests__" -exec rm -rf {} + && \
+    # Remove potentially unused Prisma engines (keep linux-musl)
+    find .next/standalone -name "libquery_engine-*" -not -name "*linux-musl*" -delete
+
 # 运行阶段
 FROM node:20-alpine AS runner
 WORKDIR /app
@@ -38,8 +49,8 @@ ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV PORT=3000
 
-# 安装 OpenSSL (Prisma 需要) 和 su-exec (用于降权执行)
-RUN apk add --no-cache openssl curl su-exec
+# 安装 OpenSSL (Prisma 需要)
+RUN apk add --no-cache openssl
 
 # 创建非 root 用户
 RUN addgroup --system --gid 1001 nodejs

@@ -1071,7 +1071,7 @@ export default function AuroraNav() {
                 <div
                   className={`mx-auto w-full transition-all duration-300 flex-1 ${containerClass} ${layoutSettings.stickyHeader ? 'pt-28' : ''} ${layoutSettings.stickyFooter ? 'pb-28' : ''}`}>
                   {!isLoading && layoutSettings.showWidgets && !isSearching && (
-                    <div className={layoutSettings.compactMode ? 'mb-4 mt-2' : 'mb-8 mt-4'}>
+                    <div className={`hidden md:block ${layoutSettings.compactMode ? 'mb-4 mt-2' : 'mb-8 mt-4'}`}>
                       <WidgetDashboard isDarkMode={isDarkMode} sitesCount={sites.length} widgetStyle={layoutSettings.widgetStyle as "A" | "B" | "C"} widgetConfig={appConfig.widgetConfig} />
                     </div>
                   )}
@@ -1096,7 +1096,7 @@ export default function AuroraNav() {
                             e.currentTarget.style.setProperty('--mouse-x', `${e.clientX - bounds.left}px`);
                             e.currentTarget.style.setProperty('--mouse-y', `${e.clientY - bounds.top}px`);
                           }}
-                          className={`group/nav relative flex items-center gap-4 p-2 rounded-full overflow-hidden custom-scrollbar max-w-full backdrop-blur-2xl shadow-2xl shadow-indigo-500/10 ${isDarkMode ? 'bg-slate-900/60 ring-1 ring-white/10' : 'bg-white/60 ring-1 ring-white/60'}`}>
+                          className={`group/nav relative flex items-center gap-2 sm:gap-3 md:gap-4 p-1.5 sm:p-2 rounded-full overflow-x-auto custom-scrollbar max-w-full backdrop-blur-2xl shadow-2xl shadow-indigo-500/10 ${isDarkMode ? 'bg-slate-900/60 ring-1 ring-white/10' : 'bg-white/60 ring-1 ring-white/60'}`}>
 
                           {/* Spotlight Effect */}
                           <div className={`pointer-events-none absolute -inset-px rounded-full opacity-0 transition-opacity duration-300 group-hover/nav:opacity-100 ${isDarkMode ? 'mix-blend-overlay' : 'mix-blend-multiply'}`}

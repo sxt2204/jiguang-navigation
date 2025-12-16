@@ -1089,14 +1089,15 @@ export default function AuroraNav() {
                   {!isLoading && (layoutSettings.showNavBar ?? true) && (
                     <nav
                       className={`sticky z-30 w-full ${layoutSettings.compactMode ? 'mb-4' : 'mb-8'} transition-all duration-500 ease-[cubic-bezier(0.4,0,0.2,1)] ${isScrolled ? 'top-[4.5rem]' : 'top-[5.5rem]'}`}>
-                      <div className="flex justify-center">
+                      <div className="px-2 md:px-4 overflow-visible">
                         <div
                           onMouseMove={(e) => {
                             const bounds = e.currentTarget.getBoundingClientRect();
                             e.currentTarget.style.setProperty('--mouse-x', `${e.clientX - bounds.left}px`);
                             e.currentTarget.style.setProperty('--mouse-y', `${e.clientY - bounds.top}px`);
                           }}
-                          className={`group/nav relative flex items-center gap-4 p-2 rounded-full overflow-hidden custom-scrollbar max-w-full backdrop-blur-2xl shadow-2xl shadow-indigo-500/10 ${isDarkMode ? 'bg-slate-900/60 ring-1 ring-white/10' : 'bg-white/60 ring-1 ring-white/60'}`}>
+                          style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch', borderRadius: '9999px' }}
+                          className={`group/nav relative flex items-center gap-2 md:gap-4 p-2 custom-scrollbar backdrop-blur-2xl shadow-2xl shadow-indigo-500/10 md:mx-auto md:w-fit ${isDarkMode ? 'bg-slate-900/60 ring-1 ring-white/10' : 'bg-white/60 ring-1 ring-white/60'}`}>
 
                           {/* Spotlight Effect */}
                           <div className={`pointer-events-none absolute -inset-px rounded-full opacity-0 transition-opacity duration-300 group-hover/nav:opacity-100 ${isDarkMode ? 'mix-blend-overlay' : 'mix-blend-multiply'}`}

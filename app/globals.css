@@ -144,6 +144,17 @@
   .no-scrollbar::-webkit-scrollbar {
     display: none;
   }
+
+  /* Custom scrollbar - 支持滚动但隐藏滚动条 */
+  .custom-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
 }
 
 @keyframes gradient-x {
@@ -155,5 +166,88 @@
 
   50% {
     background-position: 100% 50%;
+  }
+}
+
+/* ===== 移动端与PAD端响应式适配 ===== */
+/* 仅在 max-width: 1023px 生效，桌面端 (≥1024px) 完全不受影响 */
+
+/* 手机端 (<768px) */
+@media (max-width: 767px) {
+  :root {
+    --mobile-card-height: 60px;
+  }
+
+  /* 强制两列布局 */
+  .site-grid-responsive {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}
+
+/* PAD端 (768px - 1023px) */
+@media (min-width: 768px) and (max-width: 1023px) {
+  :root {
+    --mobile-card-height: 70px;
+  }
+
+  /* 仍然使用两列布局以保持一致性 */
+  .site-grid-responsive {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}
+
+/* 桌面端 (≥1024px) - 取消所有移动端覆盖 */
+@media (min-width: 1024px) {
+  :root {
+    --mobile-card-height: unset;
+  }
+}
+
+/* ===== 移动端性能优化 ===== */
+/* 针对 <768px 设备禁用消耗性能的特效 */
+
+@media (max-width: 767px) {
+
+  /* 1. 禁用/减弱模糊效果 - 最大性能提升 */
+  .backdrop-blur-2xl,
+  .backdrop-blur-xl,
+  .backdrop-blur-lg,
+  .backdrop-blur-md {
+    backdrop-filter: blur(4px) !important;
+    -webkit-backdrop-filter: blur(4px) !important;
+  }
+
+  /* 2. 简化阴影 - 移除复杂多层阴影 */
+  .shadow-2xl,
+  .shadow-xl {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15) !important;
+  }
+
+  /* 3. 禁用渐变动画 */
+  .animate-gradient-x {
+    animation: none !important;
+    background-position: 0% 50% !important;
+  }
+
+  /* 4. 硬件加速 - 滚动容器优化 */
+  .site-grid-responsive,
+  .custom-scrollbar {
+    -webkit-overflow-scrolling: touch;
+    will-change: transform;
+    transform: translateZ(0);
+  }
+
+  /* 5. 减少hover效果的过渡时间 */
+  .transition-all,
+  .transition-colors,
+  .transition-transform,
+  .transition-opacity {
+    transition-duration: 150ms !important;
+  }
+
+  /* 6. 禁用复杂的hover缩放动画 */
+  .hover\:scale-105:hover,
+  .group-hover\:scale-105:hover {
+    transform: none !important;
   }
 }

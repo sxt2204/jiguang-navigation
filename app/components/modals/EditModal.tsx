@@ -117,7 +117,7 @@ export function EditModal({ site, categories, sites, isDarkMode, onClose, onSave
                 </div>
 
                 {/* Content */}
-                <div className="flex-1 overflow-y-auto custom-scrollbar p-6 sm:p-8">
+                <div className="flex-1 overflow-y-auto custom-scrollbar p-4 sm:p-6 md:p-8">
                     <form id="site-form" onSubmit={e => {
                         e.preventDefault();
                         onSave(f);

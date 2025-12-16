@@ -3,7 +3,7 @@ import { useSortable, SortableContext, verticalListSortingStrategy } from '@dnd-
 import { CSS } from '@dnd-kit/utilities';
 import { GripVertical, Trash2, Edit3, Eye, EyeOff, ChevronRight, ChevronDown, FolderOpen, Folder } from 'lucide-react';
 import NextImage from 'next/image';
-import { FAVICON_PROVIDERS } from '@/lib/utils';
+import { FAVICON_PROVIDERS, hexToRgb } from '@/lib/utils';
 import { ICON_MAP } from '@/lib/constants';
 // SiteCard imports: import { hexToRgb, getAccessibleTextColor, shouldUseTextShadow, FAVICON_PROVIDERS } from '@/lib/utils';
 // SiteCard imports: import { ICON_MAP, FONTS } from '@/lib/constants';
@@ -189,7 +189,20 @@ export function SortableSiteItem({ site, sites, isDarkMode, onEdit, onDelete, on
                     )}
                     {renderIcon}
                     <div className="flex flex-col min-w-0">
-                        <span className={`text-sm font-medium truncate ${site.isHidden ? 'line-through decoration-2 decoration-slate-400/50' : ''}`}>{site.name}</span>
+                        <div className="flex items-center gap-2">
+                            <span className={`text-sm font-medium truncate ${site.isHidden ? 'line-through decoration-2 decoration-slate-400/50' : ''}`}>{site.name}</span>
+                            {isFolder && childrenSites.length > 0 && (
+                                <div
+                                    className="flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full text-[9px] font-bold text-white shadow-sm leading-none"
+                                    style={{
+                                        backgroundColor: site.color || '#6366f1',
+                                        boxShadow: `0 1px 6px -1px rgba(${hexToRgb(site.color || '#6366f1').r}, ${hexToRgb(site.color || '#6366f1').g}, ${hexToRgb(site.color || '#6366f1').b}, 0.5)`
+                                    }}
+                                >
+                                    {childrenSites.length}
+                                </div>
+                            )}
+                        </div>
                         {!isFolder && <span className="text-[10px] text-slate-400 truncate max-w-[150px]">{site.url}</span>}
                     </div>
                 </div>
