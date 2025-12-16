@@ -85,7 +85,7 @@ export function SiteGrid({
                                 compactMode={layoutSettings.compactMode}
                             />
 
-                            <div className="grid transition-all duration-300 ease-in-out" style={{
+                            <div className="grid transition-all duration-300 ease-in-out site-grid-responsive" style={{
                                 gap: `${layoutSettings.gap * (layoutSettings.compactMode ? 2.5 : 4)}px`,
                                 gridTemplateColumns: (!layoutSettings.gridMode || layoutSettings.gridMode === 'auto')
                                     ? `repeat(auto-fill, minmax(${parseInt(String(layoutSettings.cardWidth || 260))}px, 1fr))`
@@ -120,7 +120,7 @@ export function SiteGrid({
                 })
             ) : (
                 <SortableContext items={sortableItems} strategy={createSmartSortingStrategy(visibleSites, sortableItems)}>
-                    <div className="grid dynamic-grid" style={{
+                    <div className="grid dynamic-grid site-grid-responsive" style={{
                         gap: `${layoutSettings.gap * (layoutSettings.compactMode ? 2.5 : 4)}px`,
                         gridTemplateColumns: (!layoutSettings.gridMode || layoutSettings.gridMode === 'auto')
                             ? `repeat(auto-fill, minmax(${layoutSettings.cardWidth || 260}px, 1fr))`

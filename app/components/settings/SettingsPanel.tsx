@@ -449,14 +449,14 @@ export function SettingsPanel({
                 style={{ backdropFilter: `blur(${layoutSettings.dialogBlur ?? 12}px)` }}
                 onClick={onClose}>
                 <div onClick={e => e.stopPropagation()}
-                    className={`w-full max-w-4xl rounded-3xl shadow-2xl backdrop-blur-2xl border flex overflow-hidden h-[650px] max-h-[90vh] animate-in zoom-in-95 slide-in-from-bottom-4 duration-300 ${isDarkMode ? 'bg-slate-900/95 border-white/10' : 'bg-white/95 border-slate-200/60'}`}>
+                    className={`w-full max-w-4xl rounded-2xl md:rounded-3xl shadow-2xl backdrop-blur-2xl border flex flex-col md:flex-row overflow-hidden h-[90vh] md:h-[650px] max-h-[95vh] md:max-h-[90vh] animate-in zoom-in-95 slide-in-from-bottom-4 duration-300 ${isDarkMode ? 'bg-slate-900/95 border-white/10' : 'bg-white/95 border-slate-200/60'}`}>
 
                     {/* Enhanced Sidebar */}
                     <div
-                        className={`w-64 flex-shrink-0 border-r p-5 flex flex-col gap-1.5 ${isDarkMode ? 'border-white/5 bg-gradient-to-b from-slate-800/50 to-slate-900/50' : 'border-slate-100 bg-gradient-to-b from-slate-50 to-white'}`}>
+                        className={`w-full md:w-64 flex-shrink-0 border-b md:border-b-0 md:border-r p-2 md:p-5 flex flex-row md:flex-col gap-1 md:gap-1.5 overflow-x-auto md:overflow-x-visible custom-scrollbar ${isDarkMode ? 'border-white/5 bg-gradient-to-b from-slate-800/50 to-slate-900/50' : 'border-slate-100 bg-gradient-to-b from-slate-50 to-white'}`}>
 
-                        {/* Header with gradient icon */}
-                        <div className="flex items-center gap-3 mb-5 px-2">
+                        {/* Header with gradient icon - 移动端隐藏 */}
+                        <div className="hidden md:flex items-center gap-3 mb-5 px-2">
                             <div className="p-2 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 text-white shadow-lg shadow-indigo-500/25">
                                 <Settings size={18} />
                             </div>
@@ -466,13 +466,13 @@ export function SettingsPanel({
                             </div>
                         </div>
 
-                        {/* Navigation Tabs */}
-                        <div className="space-y-1">
+                        {/* Navigation Tabs - 移动端水平滚动 */}
+                        <div className="flex flex-row md:flex-col md:space-y-1 gap-1 md:gap-0">
                             {tabs.map(t => (
                                 <Tooltip key={t.id}>
                                     <TooltipTrigger asChild>
                                         <button onClick={() => setActiveTab(t.id)}
-                                            className={`w-full text-left px-4 py-2.5 rounded-xl text-sm font-medium flex items-center gap-3 transition-all duration-200 group
+                                            className={`shrink-0 md:w-full text-left px-2 md:px-4 py-2 md:py-2.5 rounded-lg md:rounded-xl text-sm font-medium flex items-center gap-1.5 md:gap-3 transition-all duration-200 group
                         ${activeTab === t.id
                                                     ? (isDarkMode
                                                         ? 'bg-gradient-to-r from-indigo-500/20 to-purple-500/10 text-indigo-400 shadow-sm border border-indigo-500/20'
@@ -481,15 +481,15 @@ export function SettingsPanel({
                                                         ? 'text-slate-400 hover:bg-white/5 hover:text-slate-200'
                                                         : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900')
                                                 }`}>
-                                            <div className={`p-1.5 rounded-lg transition-all duration-200
+                                            <div className={`p-1 md:p-1.5 rounded-lg transition-all duration-200
                         ${activeTab === t.id
                                                     ? 'bg-indigo-500/20 text-indigo-500'
                                                     : 'bg-transparent group-hover:bg-slate-100 dark:group-hover:bg-white/10'}`}>
                                                 <t.icon size={16} />
                                             </div>
-                                            {t.label}
+                                            <span className="hidden md:inline">{t.label}</span>
                                             {activeTab === t.id && (
-                                                <div className="ml-auto w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse" />
+                                                <div className="hidden md:block ml-auto w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse" />
                                             )}
                                         </button>
                                     </TooltipTrigger>
@@ -500,22 +500,22 @@ export function SettingsPanel({
                             ))}
                         </div>
 
-                        <div className="flex-1" />
+                        <div className="hidden md:block flex-1" />
 
-                        {/* Close Button */}
-                        <Separator className="my-2 opacity-50" />
+                        {/* Close Button - 移动端仅图标 */}
+                        <Separator className="hidden md:block my-2 opacity-50" />
                         <button onClick={onClose}
-                            className={`w-full text-left px-4 py-2.5 rounded-xl text-sm font-medium flex items-center gap-3 transition-all duration-200 hover:scale-[0.98] active:scale-95 ${isDarkMode ? 'text-slate-400 hover:bg-red-500/10 hover:text-red-400' : 'text-slate-500 hover:bg-red-50 hover:text-red-500'}`}>
-                            <div className="p-1.5 rounded-lg">
+                            className={`shrink-0 md:w-full text-left px-2 md:px-4 py-2 md:py-2.5 rounded-lg md:rounded-xl text-sm font-medium flex items-center gap-1.5 md:gap-3 transition-all duration-200 hover:scale-[0.98] active:scale-95 ${isDarkMode ? 'text-slate-400 hover:bg-red-500/10 hover:text-red-400' : 'text-slate-500 hover:bg-red-50 hover:text-red-500'}`}>
+                            <div className="p-1 md:p-1.5 rounded-lg">
                                 <X size={16} />
                             </div>
-                            关闭面板
+                            <span className="hidden md:inline">关闭面板</span>
                         </button>
                     </div>
 
-                    {/* Content Area with ScrollArea */}
-                    <ScrollArea className="flex-1">
-                        <div className="p-6">
+                    {/* Content Area with ScrollArea - 确保移动端可滚动 */}
+                    <ScrollArea className="flex-1 h-full">
+                        <div className="p-4 md:p-6 pb-20 md:pb-8">
 
                             {/* 外观 Tab */}
                             {activeTab === 'appearance' && (<div className="space-y-5">
@@ -1388,6 +1388,66 @@ export function SettingsPanel({
                                                 {(appConfig.widgetConfig?.worldClocks?.length || 0) === 0 && (
                                                     <p className="text-xs opacity-50 text-center py-2">暂无世界时钟，点击添加</p>
                                                 )}
+                                            </div>
+                                        </div>
+
+                                        {/* Widget Custom Colors */}
+                                        <div className="pt-4 mt-4 border-t border-dashed border-slate-200 dark:border-white/10 space-y-3">
+                                            <h5 className="text-sm font-bold opacity-80 flex items-center gap-2">
+                                                <Palette size={14} className="text-indigo-500" />
+                                                组件自定义颜色
+                                            </h5>
+                                            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                                {[
+                                                    { id: 'time', label: '时间组件' },
+                                                    { id: 'weather', label: '天气组件' },
+                                                    { id: 'tools', label: '工具组件' }
+                                                ].map(widget => (
+                                                    <div key={widget.id} className="space-y-1.5">
+                                                        <Label className="text-xs opacity-70">{widget.label}</Label>
+                                                        <div className="flex items-center gap-2 px-3 py-2 rounded-lg border w-full text-sm bg-white dark:bg-black/20 border-slate-200 dark:border-white/10">
+                                                            <div className="relative w-5 h-5 rounded-full shadow-sm shrink-0 border border-black/10 overflow-hidden"
+                                                                style={{
+                                                                    backgroundColor: appConfig.widgetConfig?.customColors?.[widget.id] || 'transparent',
+                                                                    backgroundImage: !appConfig.widgetConfig?.customColors?.[widget.id] ? 'linear-gradient(45deg, #ddd 25%, transparent 25%, transparent 75%, #ddd 75%, #ddd), linear-gradient(45deg, #ddd 25%, transparent 25%, transparent 75%, #ddd 75%, #ddd)' : 'none',
+                                                                    backgroundSize: '8px 8px', backgroundPosition: '0 0, 4px 4px'
+                                                                }}
+                                                            >
+                                                                <input
+                                                                    type="color"
+                                                                    className="absolute inset-0 opacity-0 cursor-pointer w-full h-full scale-150"
+                                                                    value={appConfig.widgetConfig?.customColors?.[widget.id] || '#ffffff'}
+                                                                    onChange={(e) => setAppConfig({
+                                                                        ...appConfig,
+                                                                        widgetConfig: {
+                                                                            ...appConfig.widgetConfig,
+                                                                            customColors: {
+                                                                                ...appConfig.widgetConfig?.customColors,
+                                                                                [widget.id]: e.target.value
+                                                                            }
+                                                                        }
+                                                                    })}
+                                                                />
+                                                            </div>
+                                                            <span className="opacity-70 truncate text-xs flex-1 font-mono">
+                                                                {appConfig.widgetConfig?.customColors?.[widget.id] || '默认'}
+                                                            </span>
+                                                            {appConfig.widgetConfig?.customColors?.[widget.id] && (
+                                                                <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0 hover:bg-red-500/10 hover:text-red-500"
+                                                                    onClick={() => {
+                                                                        const newColors = { ...appConfig.widgetConfig?.customColors };
+                                                                        delete newColors[widget.id];
+                                                                        setAppConfig({
+                                                                            ...appConfig,
+                                                                            widgetConfig: { ...appConfig.widgetConfig, customColors: newColors }
+                                                                        });
+                                                                    }}>
+                                                                    <X size={12} />
+                                                                </Button>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                ))}
                                             </div>
                                         </div>
                                     </div>
