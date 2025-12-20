@@ -72,7 +72,11 @@ export async function downloadAndSaveIcon(siteId: string, iconUrl: string): Prom
             // 5. Update DB
             await prisma.site.update({
                 where: { id: siteId },
-                data: { icon: publicUrl }
+                data: {
+                    icon: publicUrl,
+                    iconType: 'upload', // Mark as uploaded so frontend knows to use customIconUrl
+                    customIconUrl: publicUrl // Set customIconUrl to local path
+                }
             });
 
             return publicUrl;

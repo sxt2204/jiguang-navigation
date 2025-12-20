@@ -569,9 +569,19 @@ export default function AuroraNav() {
     checkBingSync();
   }, [layoutSettings.bgType]);
 
-  const showToast = (message: string, type: 'success' | 'error' | 'info' | 'loading' = 'success') => {
+  const toastTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  const showToast = (message: string, type: 'success' | 'error' | 'info' | 'loading' = 'success', duration = 3000) => {
+    if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
+
     setToast({ show: true, message, type });
-    setTimeout(() => setToast(prev => ({ ...prev, show: false })), 3000);
+
+    if (duration > 0) {
+      toastTimeoutRef.current = setTimeout(() => {
+        setToast(prev => ({ ...prev, show: false }));
+        toastTimeoutRef.current = null;
+      }, duration);
+    }
   };
 
   // --- Event Handlers ---
@@ -777,7 +787,7 @@ export default function AuroraNav() {
     }
 
     // 3. Handle Category Change (Standard Item-to-Item Drag)
-    let newItem = { ...activeItem };
+    const newItem = { ...activeItem };
     if (activeTab === '全部' && activeItem.category !== overItem.category) {
       newItem.category = overItem.category;
       // Also clear parentId if moving to a different category via item sort

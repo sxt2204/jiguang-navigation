@@ -66,8 +66,7 @@ COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 
 # 复制 Prisma 相关文件
 COPY --from=builder --chown=nextjs:nodejs /app/prisma/schema.prisma ./prisma/
-# Do not copy dev.db, allow it to be created init or mounted
-# COPY --from=builder --chown=nextjs:nodejs /app/prisma/dev.db ./prisma/dev.db.init
+COPY --from=builder --chown=nextjs:nodejs /app/prisma/dev.db ./prisma/dev.db.init
 # Standalone build might NOT bundle all prisma engines or generated client files depending on config.
 # Ideally .next/standalone includes node_modules which has client.
 # But we usually copy .prisma manually to be safe or if using custom output.
