@@ -14,8 +14,19 @@ const nextConfig: NextConfig = {
     dangerouslyAllowSVG: true,
   },
 
-  turbopack: {
-    root: __dirname,
+  webpack: (config, { dev, isServer }) => {
+    if (dev && !isServer) {
+      // Exclude public/uploads from file watching to prevent reload loops
+      config.watchOptions = {
+        ...config.watchOptions,
+        ignored: [
+          '**/node_modules/**',
+          '**/.git/**',
+          '**/public/uploads/**'
+        ],
+      };
+    }
+    return config;
   },
 };
 

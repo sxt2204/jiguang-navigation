@@ -101,7 +101,7 @@ export async function fetchAndCacheBingWallpaper() {
             // 3. Download if not exists
             await new Promise((resolve, reject) => {
                 const file = fs.createWriteStream(filepath);
-                https.get(imageUrl, (response) => {
+                const req = https.get(imageUrl, (response) => {
                     if (response.statusCode !== 200) {
                         reject(new Error(`Failed to download wallpaper: ${response.statusCode}`));
                         return;
@@ -111,9 +111,17 @@ export async function fetchAndCacheBingWallpaper() {
                         file.close();
                         resolve(true);
                     });
-                }).on('error', (err) => {
+                });
+
+                req.on('error', (err) => {
                     fs.unlink(filepath, () => { });
                     reject(err);
+                });
+
+                req.setTimeout(5000, () => {
+                    req.destroy();
+                    fs.unlink(filepath, () => { });
+                    reject(new Error('Download timeout'));
                 });
             });
 

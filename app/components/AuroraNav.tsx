@@ -777,7 +777,7 @@ export default function AuroraNav() {
     }
 
     // 3. Handle Category Change (Standard Item-to-Item Drag)
-    let newItem = { ...activeItem };
+    const newItem = { ...activeItem };
     if (activeTab === '全部' && activeItem.category !== overItem.category) {
       newItem.category = overItem.category;
       // Also clear parentId if moving to a different category via item sort

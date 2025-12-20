@@ -9,6 +9,7 @@ import { Globe, MoreHorizontal, ExternalLink, Folder } from 'lucide-react';
 import { hexToRgb, getAccessibleTextColor, shouldUseTextShadow, FAVICON_PROVIDERS } from '@/lib/utils';
 import { ICON_MAP, FONTS } from '@/lib/constants';
 import { useFonts } from '@/app/hooks/useFonts';
+import { useOnlineStatus } from '@/app/hooks/useOnlineStatus';
 
 interface SiteCardProps {
     site: any;
@@ -34,20 +35,22 @@ export const SiteCard = React.memo(function SiteCard({
     onFolderClick,
     childCount, // New Prop
 }: SiteCardProps & { childCount?: number }) {
+    const isOnline = useOnlineStatus();
     const [iconState, setIconState] = useState(0);
     const [imgSrc, setImgSrc] = useState<string | null>(null);
     const [hasError, setHasError] = useState(false);
 
     useEffect(() => {
         setIconState(0);
-    }, [site.url, site.iconType]);
+        setHasError(false);
+    }, [site.url, site.iconType, isOnline]);
 
     useEffect(() => {
         if (site.iconType === 'upload' && site.customIconUrl) {
             setImgSrc(site.customIconUrl);
             setHasError(false);
         } else if (site.iconType === 'auto' && site.icon && (site.icon.startsWith('/') || site.icon.startsWith('http'))) {
-            // Priority: Local Cache for Auto mode
+            // Priority 1: Local Cache
             setImgSrc(site.icon);
             setHasError(false);
         }
@@ -71,14 +74,7 @@ export const SiteCard = React.memo(function SiteCard({
     const handleImageError = () => {
         if (hasError) return;
         setHasError(true);
-
-        if (site.url) {
-            try {
-                const domain = new URL(site.url).hostname;
-                const fallbackUrl = `https://www.google.com/s2/favicons?domain=${domain}&sz=128`;
-                setImgSrc(fallbackUrl);
-            } catch (e) { }
-        }
+        // Fallback logic handled in render
     };
 
     const Icon = site.type === 'folder' ? Folder : (ICON_MAP[site.icon] || Globe);
@@ -245,44 +241,53 @@ export const SiteCard = React.memo(function SiteCard({
 
     // Icon Rendering
     // Unified Logic for both Upload and Auto (with Cache)
+    // Unified Logic for both Upload and Auto (with Cache)
     let renderIcon;
     let showImage = false;
     let currentSrc = '';
 
-    if ((site.iconType === 'auto' || site.iconType === 'upload') && site.type !== 'folder') {
-        const isLocalAttempt = (site.iconType === 'upload') ||
-            (site.iconType === 'auto' && site.icon && (site.icon.startsWith('/') || site.icon.startsWith('http')));
+    // STRICT Logic Implementation:
+    // 1. Auto: Local Cache -> Online Fetch
+    // 2. Upload: Uploaded File -> First Char (Fallback)
+    // 3. Gallery: Icon (Handled by else block via iconType check)
 
-        if (isLocalAttempt && imgSrc && !hasError) {
-            // Use local/cached image first
-            currentSrc = imgSrc;
+    if (site.iconType === 'auto') {
+        // Auto Mode
+        const hasLocalCache = site.icon && (site.icon.startsWith('/') || site.icon.startsWith('http'));
+
+        if (!hasError && hasLocalCache) {
+            // Priority 1: Local Cache
+            // We use site.icon directly. If it fails, onError will trigger and we switch to providers.
+            currentSrc = site.icon;
+            showImage = true;
         } else {
-            // Fallback to providers
-            try {
-                const domain = new URL(site.url).hostname;
-                // If we HAD a local attempt but it failed, offset index to start at 0
-                // If we typically rely on iconState:
-                // Normal Auto (No cache): iconState starts 0. index 0.
-                // Upload/AutoCache (Failed): iconState>=1. index 0. -> iconState-1.
-
+            // Priority 2: Online Fetch (Providers) - ONLY if Online
+            if (isOnline) {
                 let providerIndex = iconState;
-                if (isLocalAttempt) {
+                if (hasLocalCache) {
                     providerIndex = iconState - 1;
                 }
 
                 if (providerIndex >= 0 && providerIndex < FAVICON_PROVIDERS.length) {
-                    currentSrc = FAVICON_PROVIDERS[providerIndex](domain);
-                } else {
-                    currentSrc = ''; // Exhausted providers
+                    try {
+                        const domain = new URL(site.url).hostname;
+                        currentSrc = FAVICON_PROVIDERS[providerIndex](domain);
+                        showImage = true;
+                    } catch (e) {
+                        // Invalid URL, let it fail to text
+                    }
                 }
-            } catch (e) {
-                currentSrc = '';
             }
         }
-
-        if (currentSrc) {
+    } else if (site.iconType === 'upload') {
+        // Upload Mode
+        if (site.customIconUrl && !hasError) {
+            // Priority 1: Uploaded File
+            currentSrc = site.customIconUrl;
             showImage = true;
         }
+        // Priority 2: Fallback to Text (First Char) comes naturally if showImage is false.
+        // We DO NOT fallback to online providers for Upload mode.
     }
 
     // Child Count Badge Logic
@@ -292,19 +297,14 @@ export const SiteCard = React.memo(function SiteCard({
         renderIcon = (
             <div className="w-full h-full rounded-xl shrink-0 overflow-hidden relative">
                 <NextImage
+                    key={currentSrc}
                     src={currentSrc}
                     alt={site.name}
                     width={40}
                     height={40}
                     className="object-contain w-full h-full"
                     onError={() => {
-                        const isLocalAttempt = (site.iconType === 'upload') ||
-                            (site.iconType === 'auto' && site.icon && (site.icon.startsWith('/') || site.icon.startsWith('http')));
-
-                        // If local attempt (Upload or Cached Auto) failed, mark error to trigger fallback
-                        if (isLocalAttempt && !hasError) {
-                            setHasError(true);
-                        }
+                        setHasError(true);
                         setIconState(prev => prev + 1);
                     }}
                     unoptimized={true}

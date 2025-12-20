@@ -47,6 +47,7 @@ import { AnimationControl } from '@/app/components/settings/AnimationControl';
 import { useFonts } from '@/app/hooks/useFonts';
 import { FontPickerModal } from '@/app/components/modals/FontPickerModal';
 import { ConfirmationModal } from '@/app/components/modals/ConfirmationModal';
+import { SyncProgressModal } from '@/app/components/modals/SyncProgressModal';
 
 interface SettingsPanelProps {
     isDarkMode: boolean;
@@ -69,7 +70,7 @@ interface SettingsPanelProps {
     handleImportData: (data: any) => void;
     appConfig: any;
     setAppConfig: (config: any) => void;
-    showToast: (message: string, type?: 'success' | 'error' | 'loading' | 'info') => void;
+    showToast: (message: string, type?: 'success' | 'error' | 'info' | 'loading', duration?: number) => void;
     isWallpaperManagerOpen: boolean;
     setIsWallpaperManagerOpen: (isOpen: boolean) => void;
     setBingWallpaper: (quality: string) => void;
@@ -126,6 +127,133 @@ export function SettingsPanel({
 
     const [renamingCategory, setRenamingCategory] = useState<string | null>(null);
     const [renameValue, setRenameValue] = useState('');
+
+    // --- Sync Progress Logic ---
+    const [isSyncModalOpen, setIsSyncModalOpen] = useState(false);
+    const [syncStats, setSyncStats] = useState<{
+        progress: number;
+        total: number;
+        processed: number;
+        skipped: number;
+        success: number;
+        failed: number;
+        status: 'idle' | 'analyzing' | 'syncing' | 'finished';
+    }>({
+        progress: 0,
+        total: 0,
+        processed: 0,
+        skipped: 0,
+        success: 0,
+        failed: 0,
+        status: 'idle'
+    });
+
+    // 1. Open Modal and Calculate "To Sync"
+    const openSyncModal = async () => {
+        // Filter sites with valid URLs
+        const validSites = sites.filter((s: any) => s.url && (s.url.startsWith('http://') || s.url.startsWith('https://')));
+
+        if (validSites.length === 0) {
+            showToast('没有需要同步的站点 (请检查站点 URL)', 'info');
+            return;
+        }
+
+        setIsSyncModalOpen(true);
+        setSyncStats({
+            progress: 0,
+            total: validSites.length,
+            processed: 0,
+            skipped: 0,
+            success: 0,
+            failed: 0,
+            status: 'analyzing'
+        });
+
+        // Call API to analyze
+        try {
+            const validIds = validSites.map((s: any) => s.id);
+            const res = await fetch('/api/admin/cache-icons', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ siteIds: validIds, analyze: true })
+            });
+
+            if (res.ok) {
+                const data = await res.json();
+                setSyncStats(prev => ({
+                    ...prev,
+                    skipped: data.skipped,
+                    total: data.total,
+                    status: 'idle'
+                }));
+            } else {
+                showToast('分析失败，请稍后重试', 'error');
+                setSyncStats(prev => ({ ...prev, status: 'idle' }));
+            }
+        } catch (e) {
+            showToast('无法连接到服务器', 'error');
+            setSyncStats(prev => ({ ...prev, status: 'idle' }));
+        }
+    };
+
+    // 2. Execute Sync Logic
+    const executeSync = async () => {
+        const validSites = sites.filter((s: any) => s.url && (s.url.startsWith('http://') || s.url.startsWith('https://')));
+
+        setSyncStats(prev => ({ ...prev, status: 'syncing' }));
+
+        const BATCH_SIZE = 5;
+        let successCount = 0;
+        let failCount = 0;
+        // Keep the pre-calculated skipped count as base? No, the API will return accurate skipped counts.
+        // Actually, we should reset skipped to 0 and let the API authoritative answer come in?
+        // Or cumulatively add?
+        // Let's reset to 0 to be safe and accurate from trusted source (API).
+        let skippedCount = 0;
+        let processedCount = 0;
+
+        try {
+            for (let i = 0; i < validSites.length; i += BATCH_SIZE) {
+                // Check if modal still open/user didn't cancel? 
+                // Currently we don't have a "stop" mechanism easily, but let's assume it runs to completion.
+
+                const batch = validSites.slice(i, i + BATCH_SIZE);
+                const batchIds = batch.map((s: any) => s.id);
+
+                const res = await fetch('/api/admin/cache-icons', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ siteIds: batchIds })
+                });
+
+                if (res.ok) {
+                    const data = await res.json();
+                    successCount += data.successCount || 0;
+                    failCount += data.failCount || 0;
+                    skippedCount += data.skippedCount || 0;
+                } else {
+                    failCount += batch.length;
+                }
+
+                processedCount += batch.length;
+                const progress = Math.min(Math.round((processedCount / validSites.length) * 100), 100);
+
+                setSyncStats(prev => ({
+                    ...prev,
+                    progress,
+                    processed: processedCount,
+                    // skipped: skippedCount, // Keep analyzed skipped count stable
+                    success: successCount,
+                    failed: failCount
+                }));
+            }
+            setSyncStats(prev => ({ ...prev, status: 'finished', progress: 100 }));
+        } catch (e) {
+            showToast('同步过程中断', 'error');
+            setIsSyncModalOpen(false); // Close on critical error? Or show error state?
+        }
+    };
+
 
     const handleRename = async () => {
         if (!renamingCategory || !renameValue.trim() || renamingCategory === renameValue.trim()) {
@@ -337,7 +465,7 @@ export function SettingsPanel({
     };
 
     const handleExport = async () => {
-        let exportLayout = { ...layoutSettings };
+        const exportLayout = { ...layoutSettings };
 
         // Serialize Custom Wallpaper if exists
         if (layoutSettings.bgType === 'custom' && layoutSettings.bgColor && layoutSettings.bgColor.startsWith('/')) {
@@ -1747,20 +1875,7 @@ export function SettingsPanel({
                                                         onChange={handleFileSelect} /></div>
 
                                         {/* Sync Icons Button */}
-                                        <div onClick={async () => {
-                                            try {
-                                                showToast('正在后台同步图标...', 'success');
-                                                const res = await fetch('/api/admin/cache-icons', { method: 'POST' });
-                                                if (res.ok) {
-                                                    const data = await res.json();
-                                                    showToast(`同步完成，处理了 ${data.processed} 个站点`, 'success');
-                                                } else {
-                                                    showToast('同步失败', 'error');
-                                                }
-                                            } catch (e) {
-                                                showToast('请求失败', 'error');
-                                            }
-                                        }}
+                                        <div onClick={openSyncModal}
                                             className={`p-5 rounded-2xl border cursor-pointer text-center transition-all hover:scale-105 active:scale-95 ${isDarkMode ? 'bg-white/5 border-white/10 hover:bg-blue-500/20' : 'bg-slate-50 border-slate-200 hover:bg-blue-50'}`}>
                                             <RefreshCw size={32} className="mx-auto mb-3 text-blue-500" /><h4
                                                 className="font-bold mb-1">同步图标缓存</h4><p className="text-xs opacity-60">下载未缓存的
@@ -1793,6 +1908,13 @@ export function SettingsPanel({
                             }}
                         />
                     )}
+
+                    <SyncProgressModal
+                        isOpen={isSyncModalOpen}
+                        onClose={() => setIsSyncModalOpen(false)}
+                        onStart={executeSync}
+                        {...syncStats}
+                    />
                 </div>
             </div >
         </TooltipProvider >

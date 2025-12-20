@@ -5,6 +5,7 @@ import { GripVertical, Trash2, Edit3, Eye, EyeOff, ChevronRight, ChevronDown, Fo
 import NextImage from 'next/image';
 import { FAVICON_PROVIDERS, hexToRgb } from '@/lib/utils';
 import { ICON_MAP } from '@/lib/constants';
+import { useOnlineStatus } from '@/app/hooks/useOnlineStatus';
 // SiteCard imports: import { hexToRgb, getAccessibleTextColor, shouldUseTextShadow, FAVICON_PROVIDERS } from '@/lib/utils';
 // SiteCard imports: import { ICON_MAP, FONTS } from '@/lib/constants';
 import { Globe } from 'lucide-react';
@@ -19,6 +20,7 @@ interface SortableSiteItemProps {
 }
 
 export function SortableSiteItem({ site, sites, isDarkMode, onEdit, onDelete, onToggleHidden }: SortableSiteItemProps) {
+    const isOnline = useOnlineStatus();
     const [isExpanded, setIsExpanded] = useState(false);
 
     const {
@@ -49,75 +51,43 @@ export function SortableSiteItem({ site, sites, isDarkMode, onEdit, onDelete, on
     React.useEffect(() => {
         setIconState(0);
         setHasError(false);
-    }, [site.url, site.iconType, site.customIconUrl]);
+    }, [site.url, site.iconType, site.customIconUrl, site.icon, isOnline]);
 
     let renderIcon;
     let showImage = false;
     let currentSrc = '';
 
-    if ((site.iconType === 'auto' || site.iconType === 'upload') && site.type !== 'folder') {
-        // Determine if we have a local/custom image to try first
-        let localImageCandidate = null;
-        if (site.iconType === 'upload') {
-            localImageCandidate = site.customIconUrl;
-        } else if (site.iconType === 'auto' && site.icon && (site.icon.startsWith('/') || site.icon.startsWith('http'))) {
-            // Check if site.icon looks like a URL/Path (not a library icon name)
-            localImageCandidate = site.icon;
-        }
+    if (site.type !== 'folder') {
+        if (site.iconType === 'auto') {
+            // Auto: Cache -> Online
+            const hasLocalCache = site.icon && (site.icon.startsWith('/') || site.icon.startsWith('http'));
 
-        if (localImageCandidate && !hasError) {
-            currentSrc = localImageCandidate;
-            showImage = true;
-        } else {
-            try {
-                const domain = new URL(site.url || 'http://localhost').hostname;
-                // For auto mode, try providers in order. For upload mode fallback, also try providers.
-                // Logic Update:
-                // 1. Upload Mode:
-                //    - Initial (no error): Expect localCandidate. If missing, providerIndex = -1 (Text).
-                //    - Error (hasError): fallback to Providers (index 0+).
-                // 2. Auto Mode:
-                //    - Initial (no error):
-                //      - If has localCandidate (Cache): We tried it above. If we are here, it means we don't have it (or logic flow skpped).
-                //      - actually if localCandidate existed and !hasError, we are in the TRUE block above.
-                //      - So if we are HERE in ELSE, it means either:
-                //        a) No localCandidate
-                //        b) hasError is true (Local candidate failed)
-                //    - If hasError is true (Cache failed), we want to start with provider 0. (iconState resets on type change, but onError increments it).
-                //      - If cache failed, onError ran, iconState becomes 1.
-                //      - We want providerIndex 0. So (iconState - 1).
-                //    - If NO localCandidate (Normal Auto):
-                //      - iconState is 0. We want providerIndex 0.
-
-                // Unified Logic attempt:
-                // If we HAD a local candidate but failed, iconState > 0. We want to start providers.
-                // If we DID NOT have a local candidate, iconState is 0. 
-                //   - Upload: index = -1.
-                //   - Auto: index = 0.
-
-                let providerIndex = iconState; // Default for normal auto
-
-                // Adjust for scenarios where we attempted a local image first
-                const hadLocalCandidate = (site.iconType === 'upload' && site.customIconUrl) ||
-                    (site.iconType === 'auto' && site.icon && (site.icon.startsWith('/') || site.icon.startsWith('http')));
-
-                if (hadLocalCandidate) {
-                    // We attempted local. If we are here, it failed (hasError=true, iconState>=1).
-                    // We want to try provider 0 when iconState is 1.
-                    providerIndex = iconState - 1;
-                } else {
-                    // No local candidate.
-                    if (site.iconType === 'upload') {
-                        providerIndex = -1; // Fallback to text directly
+            if (!hasError && hasLocalCache) {
+                currentSrc = site.icon;
+                showImage = true;
+            } else {
+                // Online Fetch (Providers)
+                if (isOnline) {
+                    let providerIndex = iconState;
+                    if (hasLocalCache) {
+                        providerIndex = iconState - 1;
                     }
-                    // Auto: providerIndex = iconState (starts at 0).
-                }
 
-                if (providerIndex >= 0 && providerIndex < FAVICON_PROVIDERS.length) {
-                    currentSrc = FAVICON_PROVIDERS[providerIndex](domain);
-                    showImage = true;
+                    if (providerIndex >= 0 && providerIndex < FAVICON_PROVIDERS.length) {
+                        try {
+                            const domain = new URL(site.url || 'http://localhost').hostname;
+                            currentSrc = FAVICON_PROVIDERS[providerIndex](domain);
+                            showImage = true;
+                        } catch (e) { }
+                    }
                 }
-            } catch (e) { }
+            }
+        } else if (site.iconType === 'upload') {
+            // Upload: File -> Text
+            if (site.customIconUrl && !hasError) {
+                currentSrc = site.customIconUrl;
+                showImage = true;
+            }
         }
     }
 
@@ -125,7 +95,7 @@ export function SortableSiteItem({ site, sites, isDarkMode, onEdit, onDelete, on
         renderIcon = (
             <div className="w-6 h-6 rounded-md overflow-hidden shrink-0 bg-white/10 flex items-center justify-center relative">
                 <NextImage
-                    key={currentSrc} // Force re-render on src change
+                    key={currentSrc}
                     src={currentSrc}
                     alt={site.name}
                     width={24}
@@ -133,16 +103,7 @@ export function SortableSiteItem({ site, sites, isDarkMode, onEdit, onDelete, on
                     className="object-contain w-full h-full"
                     unoptimized
                     onError={() => {
-                        // Logic from SiteCard: Always increment state to cycle providers or fail to text
-                        // If it was a local image attempt (upload OR auto-cache) that failed, mark hasError.
-                        // We check the SAME condition as the render logic to know if we were trying a local image.
-                        const isLocalAttempt = (site.iconType === 'upload' && !hasError) || // Upload attempt
-                            (site.iconType === 'auto' && !hasError && site.icon && (site.icon.startsWith('/') || site.icon.startsWith('http'))); // Cache attempt
-
-                        if (isLocalAttempt) {
-                            setHasError(true);
-                        }
-                        // Always increment to move to next provider or exhaust list
+                        setHasError(true);
                         setIconState(prev => prev + 1);
                     }}
                 />
