@@ -7,8 +7,9 @@ if [ ! -f /app/data/dev.db ]; then
   echo "数据库初始化完成"
 fi
 
-# 确保 uploads 目录存在 (使用 data 卷进行统一存储)
-mkdir -p /app/data/uploads
+# 确保 uploads 目录及其子目录存在 (使用 data 卷进行统一存储)
+mkdir -p /app/data/uploads/wallpapers/bing
+mkdir -p /app/data/uploads/wallpapers/custom
 
 # 将 public/uploads 链接到 data/uploads
 if [ ! -L /app/public/uploads ]; then

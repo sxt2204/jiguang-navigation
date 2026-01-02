@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { ImagePlus, X, RefreshCw, UploadCloud, Trash2 } from 'lucide-react';
+import { getUploadUrl } from '@/lib/upload-url';
 
 interface WallpaperManagerProps {
     isOpen: boolean;
@@ -171,7 +172,7 @@ export function WallpaperManager({ isOpen, onClose, onSelect, isDarkMode, showTo
                             {wallpapers.map((w) => (
                                 <div key={w.id} className={`group relative aspect-video rounded-xl overflow-hidden border-2 transition-all cursor-pointer ${selectedIds.includes(w.id) ? 'border-indigo-500 ring-2 ring-indigo-500/20' : 'border-transparent hover:border-indigo-500/50'}`}
                                     onClick={() => onSelect(w.url)}>
-                                    <img src={w.url} className="w-full h-full object-cover" loading="lazy" />
+                                    <img src={getUploadUrl(w.url)} className="w-full h-full object-cover" loading="lazy" />
                                     <div className="absolute top-2 right-2 z-20 p-2"
                                         onClick={(e) => {
                                             e.stopPropagation();

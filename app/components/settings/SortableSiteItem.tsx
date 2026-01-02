@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useSortable, SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { GripVertical, Trash2, Edit3, Eye, EyeOff, ChevronRight, ChevronDown, FolderOpen, Folder } from 'lucide-react';
+import { GripVertical, Trash2, Edit3, Eye, EyeOff, ChevronRight, ChevronDown, FolderOpen, Folder, Plus } from 'lucide-react';
 import NextImage from 'next/image';
 import { FAVICON_PROVIDERS, hexToRgb } from '@/lib/utils';
 import { ICON_MAP } from '@/lib/constants';
@@ -17,9 +17,10 @@ interface SortableSiteItemProps {
     onEdit: (site: any) => void;
     onDelete: (site: any) => void;
     onToggleHidden: (site: any) => void;
+    onAddToFolder?: (parentId: string, category: string) => void; // New: add site/folder to this folder
 }
 
-export function SortableSiteItem({ site, sites, isDarkMode, onEdit, onDelete, onToggleHidden }: SortableSiteItemProps) {
+export function SortableSiteItem({ site, sites, isDarkMode, onEdit, onDelete, onToggleHidden, onAddToFolder }: SortableSiteItemProps) {
     const isOnline = useOnlineStatus();
     const [isExpanded, setIsExpanded] = useState(false);
 
@@ -66,8 +67,9 @@ export function SortableSiteItem({ site, sites, isDarkMode, onEdit, onDelete, on
                 currentSrc = site.icon;
                 showImage = true;
             } else {
-                // Online Fetch (Providers)
-                if (isOnline) {
+                // Online Fetch (Providers) - only if URL is valid
+                const hasValidUrl = site.url && site.url.trim() && site.url !== '#';
+                if (isOnline && hasValidUrl) {
                     let providerIndex = iconState;
                     if (hasLocalCache) {
                         providerIndex = iconState - 1;
@@ -75,9 +77,12 @@ export function SortableSiteItem({ site, sites, isDarkMode, onEdit, onDelete, on
 
                     if (providerIndex >= 0 && providerIndex < FAVICON_PROVIDERS.length) {
                         try {
-                            const domain = new URL(site.url || 'http://localhost').hostname;
-                            currentSrc = FAVICON_PROVIDERS[providerIndex](domain);
-                            showImage = true;
+                            const domain = new URL(site.url).hostname;
+                            // Don't fetch for localhost or invalid domains
+                            if (domain && domain !== 'localhost' && domain.includes('.')) {
+                                currentSrc = FAVICON_PROVIDERS[providerIndex](domain);
+                                showImage = true;
+                            }
                         } catch (e) { }
                     }
                 }
@@ -111,26 +116,25 @@ export function SortableSiteItem({ site, sites, isDarkMode, onEdit, onDelete, on
         );
     } else {
         const firstLetter = site.name ? site.name.charAt(0).toUpperCase() : '?';
-        // SiteCard logic: const brandRgb = hexToRgb(site.color || '#6366f1');
-        // SiteCard internal logic: style={{ backgroundColor: site.color }}. 
-        // Wait, SiteCard Icon Wrapper: style={{ backgroundColor: site.color }} for library.
-        // SiteCard Default Icon Wrapper: style={{ backgroundColor: site.color, fontSize: iconSizePx * 0.5 }}.
-        // But in SiteCard render: const brandRgb = hexToRgb(site.color || '#6366f1'); is used for CARD background, not ICON background?
-        // Let's look at SiteCard's icon rendering block:
-        // {site.iconType === 'library' ? (...) style={{ backgroundColor: site.color }}
-        // So if site.color is missing, it is transparent? No, undefined bg.
-        // But SiteCard usually has site.color set from the palette?
-        // Let's assume site.color might be empty. SiteCard uses site.color.
-        // SortableSiteItem uses site.color || '#6366f1'.
-        // If SiteCard has site.color as undefined, it renders transparent?
-        // Let's standardize to use site.color || '#6366f1' to be safe and consistent with visual expectation (blue default).
+
+        // Determine what to show inside the icon container
+        let iconContent;
+        if (isFolder) {
+            iconContent = isExpanded ? <FolderOpen size={14} /> : <Folder size={14} />;
+        } else if (site.iconType === 'library') {
+            // Only use Icon from library if iconType is explicitly 'library'
+            iconContent = Icon ? <Icon size={14} /> : <Globe size={14} />;
+        } else {
+            // For 'auto' and 'upload' fallback, show first letter
+            iconContent = firstLetter;
+        }
 
         renderIcon = (
             <div
                 className="w-6 h-6 rounded-md flex items-center justify-center text-white text-xs font-bold"
                 style={{ backgroundColor: site.color || '#6366f1' }}
             >
-                {isFolder ? (isExpanded ? <FolderOpen size={14} /> : <Folder size={14} />) : (site.iconType === 'library' ? (Icon ? <Icon size={14} /> : <Globe size={14} />) : firstLetter)}
+                {iconContent}
             </div>
         );
     }
@@ -168,6 +172,16 @@ export function SortableSiteItem({ site, sites, isDarkMode, onEdit, onDelete, on
                     </div>
                 </div>
                 <div className="flex items-center gap-1 shrink-0">
+                    {/* Add to folder button - only for folders */}
+                    {isFolder && onAddToFolder && (
+                        <button
+                            onClick={() => onAddToFolder(site.id, site.category)}
+                            className="p-1.5 rounded-md text-slate-400 hover:bg-indigo-500/10 hover:text-indigo-500 transition-colors"
+                            title="添加站点到此文件夹"
+                        >
+                            <Plus size={14} />
+                        </button>
+                    )}
                     <button
                         onClick={() => onToggleHidden(site)}
                         className="p-1.5 rounded-md text-slate-400 hover:bg-black/5 dark:hover:bg-white/10 hover:text-indigo-500 transition-colors"
@@ -202,6 +216,7 @@ export function SortableSiteItem({ site, sites, isDarkMode, onEdit, onDelete, on
                                 onEdit={onEdit}
                                 onDelete={onDelete}
                                 onToggleHidden={onToggleHidden}
+                                onAddToFolder={onAddToFolder}
                             />
                         ))}
                     </SortableContext>

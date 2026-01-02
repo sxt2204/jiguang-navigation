@@ -3,12 +3,15 @@ import path from 'path';
 import https from 'https';
 import { prisma } from './prisma';
 
+// Directory paths - computed at module load but directories created on demand
 const WALLPAPER_DIR = path.join(process.cwd(), 'public', 'uploads', 'wallpapers');
 const BING_DIR = path.join(WALLPAPER_DIR, 'bing');
 
-// Ensure directories exist
-if (!fs.existsSync(BING_DIR)) {
-    fs.mkdirSync(BING_DIR, { recursive: true });
+// Helper function to ensure directory exists (called at runtime, not build time)
+function ensureBingDirExists() {
+    if (!fs.existsSync(BING_DIR)) {
+        fs.mkdirSync(BING_DIR, { recursive: true });
+    }
 }
 
 export async function fetchAndCacheBingWallpaper() {
@@ -98,6 +101,9 @@ export async function fetchAndCacheBingWallpaper() {
         });
 
         if (!wallpaper || !fs.existsSync(filepath)) {
+            // Ensure directory exists before download (runtime check for Docker symlinks)
+            ensureBingDirExists();
+
             // 3. Download if not exists
             await new Promise((resolve, reject) => {
                 const file = fs.createWriteStream(filepath);

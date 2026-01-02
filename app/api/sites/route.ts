@@ -41,7 +41,8 @@ export async function POST(request: Request) {
         const site = await prisma.site.create({
 
             data: {
-                id: body.id,
+                // Only include id if it's a non-null, non-empty string
+                ...(body.id && typeof body.id === 'string' ? { id: body.id } : {}),
                 name: body.name || 'New Site', // Ensure string
                 // url removed here, handled at bottom
                 desc: body.desc,

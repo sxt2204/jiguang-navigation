@@ -177,6 +177,7 @@ export default function AuroraNav() {
 
   // dnd-kit Sensors - Optimized for Mobile
   const [activeDragId, setActiveDragId] = useState<number | string | null>(null);
+  const [dragOverFolderId, setDragOverFolderId] = useState<string | null>(null);
   const sensors = useSensors(
     useSensor(MouseSensor, { activationConstraint: { distance: 8 } }),
     useSensor(TouchSensor, {
@@ -499,7 +500,11 @@ export default function AuroraNav() {
   };
 
   const setBingWallpaper = async (quality = bingQuality) => {
+    const label = quality === 'uhd' ? '4K 超清' : (quality === '1920x1080' ? '1080P 高清' : '手机版');
+    setBingQuality(quality);
+
     try {
+      // 1. 检查本地是否有今日壁纸
       const res = await fetch('/api/wallpapers?type=bing');
       if (res.ok) {
         const wallpapers = await res.json();
@@ -508,22 +513,42 @@ export default function AuroraNav() {
           const now = new Date();
           const todayStr = now.getFullYear() + String(now.getMonth() + 1).padStart(2, '0') + String(now.getDate()).padStart(2, '0');
           if (latest.filename.includes(todayStr)) {
+            // 今日壁纸已缓存，直接使用
             setLayoutSettings((prev: any) => ({ ...prev, bgEnabled: true, bgType: 'bing', bgUrl: latest.url }));
-            setBingQuality(quality);
-            showToast('已应用今日 Bing 壁纸 (本地缓存)', 'info');
+            showToast(`已应用今日 Bing 壁纸 (${label})`, 'info');
             return;
           }
         }
       }
-    } catch (e) {
-      console.error('Failed to check local bing cache', e);
-    }
 
-    const url = `https://bing.img.run/${quality}.php`;
-    setLayoutSettings((prev: any) => ({ ...prev, bgEnabled: true, bgType: 'bing', bgUrl: url }));
-    setBingQuality(quality);
-    const label = quality === 'uhd' ? '4K 超清' : (quality === '1920x1080' ? '1080P 高清' : '手机版');
-    showToast(`已应用 Bing 每日一图 (${label})`, 'success');
+      // 2. 本地没有今日壁纸，触发同步下载
+      showToast('正在同步今日 Bing 壁纸...', 'loading');
+      const syncRes = await fetch('/api/wallpapers/bing', { method: 'POST' });
+      if (syncRes.ok) {
+        const syncData = await syncRes.json();
+        if (syncData.wallpaper?.url) {
+          setLayoutSettings((prev: any) => ({ ...prev, bgEnabled: true, bgType: 'bing', bgUrl: syncData.wallpaper.url }));
+          showToast(`已应用今日 Bing 壁纸 (${label})`, 'success');
+          return;
+        }
+      }
+
+      // 3. 同步失败，使用最新的本地缓存（可能不是今日的）
+      const fallbackRes = await fetch('/api/wallpapers?type=bing');
+      if (fallbackRes.ok) {
+        const wallpapers = await fallbackRes.json();
+        if (wallpapers.length > 0) {
+          setLayoutSettings((prev: any) => ({ ...prev, bgEnabled: true, bgType: 'bing', bgUrl: wallpapers[0].url }));
+          showToast(`已应用最近的 Bing 壁纸 (${label})`, 'info');
+          return;
+        }
+      }
+
+      showToast('无法获取 Bing 壁纸，请检查网络', 'error');
+    } catch (e) {
+      console.error('Failed to set bing wallpaper', e);
+      showToast('获取壁纸失败', 'error');
+    }
   };
 
   // Auto-Sync Bing Wallpaper Check
@@ -674,6 +699,7 @@ export default function AuroraNav() {
 
   const handleDragEnd = async (event: DragEndEvent) => {
     setActiveDragId(null);
+    setDragOverFolderId(null);
     const { active, over } = event;
     if (!over || active.id === over.id) return;
 
@@ -725,13 +751,31 @@ export default function AuroraNav() {
     // Note: over.id for breadcrumb is 'breadcrumb-home'. Not an index in visualSites.
     // If over.id === 'breadcrumb-home'
     if (over.id === 'breadcrumb-home' && currentFolderId) {
+      // Additional check: verify the drop is actually within the breadcrumb area
+      // closestCenter can trigger from far away, so we need to validate
+      const overRect = over.rect;
+      const activeRect = active.rect?.current?.translated;
+      if (overRect && activeRect) {
+        // Check if the dragged item overlaps with the breadcrumb
+        const overlap = !(
+          activeRect.left > overRect.left + overRect.width ||
+          activeRect.left + activeRect.width < overRect.left ||
+          activeRect.top > overRect.top + overRect.height ||
+          activeRect.top + activeRect.height < overRect.top
+        );
+        if (!overlap) {
+          // Not actually over the breadcrumb, skip this handler
+          return;
+        }
+      }
+
       // Need to look up active from sites
       const realActive = sites.find(s => s.id === active.id);
       if (!realActive) return;
 
       const newSites = sites.map(s => s.id === active.id ? { ...s, parentId: null } : s);
       setSites(newSites);
-      showToast('已移出文件夹', 'success');
+      showToast('已移至根目录', 'success');
 
       // Removed redundant fetch; useEffect handles sync
       return;
@@ -772,7 +816,26 @@ export default function AuroraNav() {
     const overItem = visualSites[newIndex];
 
     // --- FOLDER DROP LOGIC ---
-    if (overItem.type === 'folder' && activeItem.id !== overItem.id && activeItem.type !== 'folder') {
+    // Allow both sites and folders to be dropped into folders (but not into themselves or descendants)
+    // Drop on folder = move into folder. To reorder with folders, drag to a site instead.
+    if (overItem.type === 'folder' && activeItem.id !== overItem.id) {
+      // Check for circular reference: can't drop a folder into its own descendant
+      const isDescendant = (potentialParentId: string, checkId: string, visited = new Set<string>()): boolean => {
+        if (visited.has(potentialParentId)) return false;
+        visited.add(potentialParentId);
+        const folder = sites.find(s => s.id === potentialParentId);
+        if (!folder) return false;
+        if (folder.parentId === checkId) return true;
+        if (folder.parentId) return isDescendant(folder.parentId, checkId, visited);
+        return false;
+      };
+
+      // Don't allow dropping a folder into its own descendant
+      if (activeItem.type === 'folder' && isDescendant(overItem.id, activeItem.id)) {
+        showToast('不能将文件夹移入其子文件夹', 'error');
+        return;
+      }
+
       const isAlreadyChild = activeItem.parentId === overItem.id;
       if (!isAlreadyChild) {
         // Adopt the folder's category when dropped into it
@@ -828,8 +891,22 @@ export default function AuroraNav() {
   /* DragOver Handler for Multi-Container Sorting */
   const handleDragOver = (event: any) => {
     const { active, over } = event;
-    if (!over) return;
-    if (active.id === over.id) return;
+    if (!over) {
+      setDragOverFolderId(null);
+      return;
+    }
+    if (active.id === over.id) {
+      setDragOverFolderId(null);
+      return;
+    }
+
+    // Set visual feedback for folder drop targets
+    const overSiteCheck = sites.find(s => s.id === over.id);
+    if (overSiteCheck?.type === 'folder' && active.id !== over.id) {
+      setDragOverFolderId(over.id as string);
+    } else {
+      setDragOverFolderId(null);
+    }
 
     // 1. Handle Category Header Hover -> Optimistic Move
     if (over.data.current?.type === 'category') {
@@ -1207,7 +1284,7 @@ export default function AuroraNav() {
                     <div className={layoutSettings.compactMode ? 'space-y-4' : 'space-y-10'}>
                       {/* Breadcrumbs for Folder Navigation */}
                       {currentFolderId && (
-                        <div className="mb-4 flex items-center gap-2 text-sm animate-in slide-in-from-left-2 fade-in duration-300">
+                        <div className="mb-4 flex items-center gap-2 text-sm animate-in slide-in-from-left-2 fade-in duration-300 flex-wrap">
 
                           <DroppableHomeBreadcrumb
                             onClick={() => setCurrentFolderId(null)}
@@ -1217,20 +1294,47 @@ export default function AuroraNav() {
                           </DroppableHomeBreadcrumb>
 
                           {(() => {
-                            // Simple breadcrumb for 1 level deep for now
-                            const currentFolder = sites.find(s => s.id === currentFolderId);
-                            return (
-                              <>
-                                <ChevronRight size={14} className="text-slate-400 opacity-60" />
-                                <div className={`px-3 py-1.5 rounded-full text-xs font-bold border select-none transition-colors
-                                    ${isDarkMode
-                                    ? 'bg-white/5 border-white/5 text-slate-200 shadow-sm'
-                                    : 'bg-white border-slate-200 text-slate-700 shadow-sm'
-                                  }`}>
-                                  {currentFolder?.name || 'Folder'}
-                                </div>
-                              </>
-                            );
+                            // Build full breadcrumb path
+                            const buildPath = (folderId: string, visited = new Set<string>()): any[] => {
+                              if (visited.has(folderId)) return [];
+                              visited.add(folderId);
+                              const folder = sites.find(s => s.id === folderId);
+                              if (!folder) return [];
+                              if (folder.parentId) {
+                                return [...buildPath(folder.parentId, visited), folder];
+                              }
+                              return [folder];
+                            };
+
+                            const path = buildPath(currentFolderId);
+
+                            return path.map((folder, index) => (
+                              <React.Fragment key={folder.id}>
+                                <ChevronRight size={14} className="text-slate-400 opacity-60 shrink-0" />
+                                {index === path.length - 1 ? (
+                                  // Current folder (not clickable, just display)
+                                  <div className={`px-3 py-1.5 rounded-full text-xs font-bold border select-none transition-colors
+                                      ${isDarkMode
+                                      ? 'bg-white/5 border-white/5 text-slate-200 shadow-sm'
+                                      : 'bg-white border-slate-200 text-slate-700 shadow-sm'
+                                    }`}>
+                                    {folder.name}
+                                  </div>
+                                ) : (
+                                  // Parent folder (clickable)
+                                  <button
+                                    onClick={() => setCurrentFolderId(folder.id)}
+                                    className={`px-3 py-1.5 rounded-full text-xs font-medium border select-none transition-all hover:scale-105 active:scale-95
+                                      ${isDarkMode
+                                        ? 'bg-white/5 border-white/10 text-slate-400 hover:text-slate-200 hover:border-white/20'
+                                        : 'bg-slate-50 border-slate-200 text-slate-500 hover:text-slate-700 hover:bg-white'
+                                      }`}
+                                  >
+                                    {folder.name}
+                                  </button>
+                                )}
+                              </React.Fragment>
+                            ));
                           })()}
                         </div>
                       )}
@@ -1258,6 +1362,7 @@ export default function AuroraNav() {
                         getCategoryColor={getCategoryColor}
                         onFolderClick={(folder: any) => setCurrentFolderId(folder.id)}
                         sites={sites} // Pass sites for folder count
+                        dragOverFolderId={dragOverFolderId} // Visual feedback for folder drop targets
                       />
                     </div>
                   </main>
@@ -1361,15 +1466,19 @@ export default function AuroraNav() {
                 const siteId = contextMenu.siteId;
                 if (!siteId) return;
                 const site = sites.find(s => s.id === siteId);
+                // Get the current folder to find its parent
+                const currentFolder = sites.find(s => s.id === currentFolderId);
+                // Move to parent folder's level (not root)
+                const newParentId = currentFolder?.parentId || null;
                 // Optimistic
-                setSites(prev => prev.map(s => s.id === siteId ? { ...s, parentId: null } : s));
+                setSites(prev => prev.map(s => s.id === siteId ? { ...s, parentId: newParentId } : s));
                 setContextMenu({ ...contextMenu, visible: false });
-                showToast('已移出文件夹', 'success');
+                showToast(newParentId ? '已移至上一层' : '已移至根目录', 'success');
                 try {
                   await fetch('/api/sites', {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ ...site, parentId: null })
+                    body: JSON.stringify({ ...site, parentId: newParentId })
                   });
                 } catch (e) { showToast('移动失败', 'error'); }
               }}
@@ -1394,7 +1503,7 @@ export default function AuroraNav() {
             onClose={() => setIsModalOpen(false)} onSave={async (data: any) => {
 
               try {
-                if (editingSite) {
+                if (editingSite?.id) {
                   const res = await fetch('/api/sites', {
                     method: 'PUT',
                     body: JSON.stringify({ ...data, id: editingSite.id })

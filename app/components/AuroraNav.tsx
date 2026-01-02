@@ -499,7 +499,11 @@ export default function AuroraNav() {
   };
 
   const setBingWallpaper = async (quality = bingQuality) => {
+    const label = quality === 'uhd' ? '4K 超清' : (quality === '1920x1080' ? '1080P 高清' : '手机版');
+    setBingQuality(quality);
+
     try {
+      // 1. 检查本地是否有今日壁纸
       const res = await fetch('/api/wallpapers?type=bing');
       if (res.ok) {
         const wallpapers = await res.json();
@@ -508,22 +512,42 @@ export default function AuroraNav() {
           const now = new Date();
           const todayStr = now.getFullYear() + String(now.getMonth() + 1).padStart(2, '0') + String(now.getDate()).padStart(2, '0');
           if (latest.filename.includes(todayStr)) {
+            // 今日壁纸已缓存，直接使用
             setLayoutSettings((prev: any) => ({ ...prev, bgEnabled: true, bgType: 'bing', bgUrl: latest.url }));
-            setBingQuality(quality);
-            showToast('已应用今日 Bing 壁纸 (本地缓存)', 'info');
+            showToast(`已应用今日 Bing 壁纸 (${label})`, 'info');
             return;
           }
         }
       }
-    } catch (e) {
-      console.error('Failed to check local bing cache', e);
-    }
 
-    const url = `https://bing.img.run/${quality}.php`;
-    setLayoutSettings((prev: any) => ({ ...prev, bgEnabled: true, bgType: 'bing', bgUrl: url }));
-    setBingQuality(quality);
-    const label = quality === 'uhd' ? '4K 超清' : (quality === '1920x1080' ? '1080P 高清' : '手机版');
-    showToast(`已应用 Bing 每日一图 (${label})`, 'success');
+      // 2. 本地没有今日壁纸，触发同步下载
+      showToast('正在同步今日 Bing 壁纸...', 'loading');
+      const syncRes = await fetch('/api/wallpapers/bing', { method: 'POST' });
+      if (syncRes.ok) {
+        const syncData = await syncRes.json();
+        if (syncData.wallpaper?.url) {
+          setLayoutSettings((prev: any) => ({ ...prev, bgEnabled: true, bgType: 'bing', bgUrl: syncData.wallpaper.url }));
+          showToast(`已应用今日 Bing 壁纸 (${label})`, 'success');
+          return;
+        }
+      }
+
+      // 3. 同步失败，使用最新的本地缓存（可能不是今日的）
+      const fallbackRes = await fetch('/api/wallpapers?type=bing');
+      if (fallbackRes.ok) {
+        const wallpapers = await fallbackRes.json();
+        if (wallpapers.length > 0) {
+          setLayoutSettings((prev: any) => ({ ...prev, bgEnabled: true, bgType: 'bing', bgUrl: wallpapers[0].url }));
+          showToast(`已应用最近的 Bing 壁纸 (${label})`, 'info');
+          return;
+        }
+      }
+
+      showToast('无法获取 Bing 壁纸，请检查网络', 'error');
+    } catch (e) {
+      console.error('Failed to set bing wallpaper', e);
+      showToast('获取壁纸失败', 'error');
+    }
   };
 
   // Auto-Sync Bing Wallpaper Check

@@ -21,6 +21,7 @@ interface SiteCardProps {
     onContextMenu?: (e: React.MouseEvent, id: any) => void;
     isOverlay?: boolean;
     onFolderClick?: (folder: any) => void;
+    isDropTarget?: boolean; // Visual feedback for folder drop target
 }
 
 export const SiteCard = React.memo(function SiteCard({
@@ -34,6 +35,7 @@ export const SiteCard = React.memo(function SiteCard({
     isOverlay,
     onFolderClick,
     childCount, // New Prop
+    isDropTarget, // Visual feedback for folder drop target
 }: SiteCardProps & { childCount?: number }) {
     const isOnline = useOnlineStatus();
     const [iconState, setIconState] = useState(0);
@@ -349,7 +351,14 @@ export const SiteCard = React.memo(function SiteCard({
     return (
         <motion.div
             className={`spotlight-card relative h-full overflow-hidden ${isOverlay ? 'shadow-2xl scale-105 cursor-grabbing' : ''}`}
-            style={{ borderRadius: settings.cardRadius ?? 16 }}
+            style={{
+                borderRadius: settings.cardRadius ?? 16,
+                ...(isDropTarget && site.type === 'folder' ? {
+                    transform: 'scale(1.05)',
+                    boxShadow: '0 0 20px rgba(34, 197, 94, 0.5), 0 0 40px rgba(34, 197, 94, 0.3)',
+                    transition: 'all 0.2s ease-in-out'
+                } : {})
+            }}
             whileHover={!isOverlay && (settings.enableHover ?? true) ? {
                 scale: 1.02,
                 y: -4 * (settings.hoverIntensity ?? 1),
@@ -409,7 +418,7 @@ export const SiteCard = React.memo(function SiteCard({
                             <div className={`flex min-w-0 overflow-hidden ${isRowLayout ? 'flex-row items-baseline gap-1 sm:gap-2 flex-1' : 'flex-col'}`}>
                                 <span
                                     className={`font-bold truncate text-xs sm:text-sm md:text-base leading-tight ${hasShadow ? 'text-shadow-sm' : ''}`}
-                                    style={{ color: titleColorStyle, fontFamily: titleFontFamily }}>
+                                    style={{ color: titleColorStyle, fontFamily: titleFontFamily, fontSize: titleFontSize ? `${titleFontSize}px` : undefined }}>
                                     {site.name}
                                 </span>
 
