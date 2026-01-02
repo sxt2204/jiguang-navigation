@@ -22,6 +22,7 @@ interface SiteGridProps {
     onContextMenu: (e: any, id: any) => void;
     onFolderClick?: (folder: any) => void;
     getCategoryColor: (cat: string) => string;
+    dragOverFolderId?: string | null; // For visual feedback on folder drop targets
 }
 
 export function SiteGrid({
@@ -39,7 +40,8 @@ export function SiteGrid({
     onContextMenu,
     onFolderClick,
     getCategoryColor,
-    sites // New Prop
+    sites, // New Prop
+    dragOverFolderId, // For visual feedback
 }: SiteGridProps & { sites?: any[] }) {
 
     if (isLoading) {
@@ -104,6 +106,7 @@ export function SiteGrid({
                                                     onContextMenu={onContextMenu}
                                                     onFolderClick={onFolderClick}
                                                     childCount={childCount}
+                                                    isDropTarget={String(site.id) === String(dragOverFolderId)}
                                                 />
                                             );
                                         })}
@@ -138,6 +141,7 @@ export function SiteGrid({
                                         onContextMenu={onContextMenu}
                                         onFolderClick={onFolderClick}
                                         childCount={childCount}
+                                        isDropTarget={String(site.id) === String(dragOverFolderId)}
                                     />
                                 )
                             })}

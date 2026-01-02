@@ -1,10 +1,21 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { checkDatabaseConsistency } from '@/lib/db-consistency';
+
+// Track if consistency check has run this session (avoid repeated checks on every request)
+let consistencyCheckDone = false;
 
 export async function GET() {
     try {
         console.log('[Init API] Loading data...');
         console.log('[Init API] DATABASE_URL:', process.env.DATABASE_URL);
+
+        // Run consistency check once per server session (auto-repair orphaned sites)
+        if (!consistencyCheckDone) {
+            console.log('[Init API] Running one-time database consistency check...');
+            await checkDatabaseConsistency(true);
+            consistencyCheckDone = true;
+        }
 
         const [sites, categories, settings, user] = await Promise.all([
             prisma.site.findMany({ orderBy: { order: 'asc' } }),

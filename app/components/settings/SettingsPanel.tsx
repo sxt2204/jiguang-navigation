@@ -37,6 +37,7 @@ import { Separator } from "@/components/ui/separator";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 
 import { FONTS, FRESH_BACKGROUND_COLORS, SOCIAL_ICONS } from '@/lib/constants';
+import { getRandomColor } from '@/lib/utils';
 import { RangeControl } from '@/app/components/ui/RangeControl';
 import { NewCategoryInput } from '@/app/components/settings/NewCategoryInput';
 import { BackgroundPositionPreview } from '@/app/components/settings/BackgroundPositionPreview';
@@ -124,6 +125,7 @@ export function SettingsPanel({
     const { allFonts, removeFont } = useFonts();
     const [isFontPickerOpen, setIsFontPickerOpen] = useState(false);
     const [fontToDelete, setFontToDelete] = useState<any>(null);
+    const [isResetFontsModalOpen, setIsResetFontsModalOpen] = useState(false);
 
     const [renamingCategory, setRenamingCategory] = useState<string | null>(null);
     const [renameValue, setRenameValue] = useState('');
@@ -696,9 +698,20 @@ export function SettingsPanel({
 
                                 {/* Typography Customization Section */}
                                 <div className="mt-6 pt-6 border-t border-indigo-500/10 dark:border-white/5">
-                                    <div className="flex items-center gap-2 mb-4">
-                                        <Type size={16} className="text-indigo-500" />
-                                        <span className="text-sm font-bold text-indigo-500">卡片文字样式</span>
+                                    <div className="flex items-center justify-between mb-4">
+                                        <div className="flex items-center gap-2">
+                                            <Type size={16} className="text-indigo-500" />
+                                            <span className="text-sm font-bold text-indigo-500">卡片文字样式</span>
+                                        </div>
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            className="h-7 text-xs gap-1.5"
+                                            onClick={() => setIsResetFontsModalOpen(true)}
+                                        >
+                                            <RefreshCw size={12} />
+                                            一键恢复
+                                        </Button>
                                     </div>
 
                                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
@@ -714,7 +727,6 @@ export function SettingsPanel({
                                                         setLayoutSettings({ ...layoutSettings, globalTitleFont: e.target.value });
                                                     }}
                                                 >
-                                                    <option value="system">系统默认</option>
                                                     {allFonts.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
                                                 </select>
                                                 <div className="flex items-center gap-2">
@@ -766,7 +778,6 @@ export function SettingsPanel({
                                                     value={layoutSettings.globalDescFont ?? 'system'}
                                                     onChange={(e) => setLayoutSettings({ ...layoutSettings, globalDescFont: e.target.value })}
                                                 >
-                                                    <option value="system">系统默认</option>
                                                     {allFonts.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
                                                 </select>
                                                 <div className="flex items-center gap-2">
@@ -1584,6 +1595,27 @@ export function SettingsPanel({
                             {activeTab === 'categories' && (
                                 <div className="space-y-4">
                                     <NewCategoryInput onAdd={handleAddCategory} isDarkMode={isDarkMode} />
+
+                                    {/* Site Statistics */}
+                                    <div className={`flex items-center justify-between px-4 py-3 rounded-xl border text-sm ${isDarkMode ? 'bg-white/5 border-white/5' : 'bg-slate-50 border-slate-100'}`}>
+                                        <div className="flex items-center gap-4">
+                                            <div className="flex items-center gap-1.5">
+                                                <span className="opacity-60">站点总数:</span>
+                                                <span className="font-bold text-indigo-500">{sites.filter((s: any) => s.type !== 'folder').length}</span>
+                                            </div>
+                                            <div className={`w-px h-4 ${isDarkMode ? 'bg-white/10' : 'bg-slate-200'}`} />
+                                            <div className="flex items-center gap-1.5">
+                                                <span className="opacity-60">文件夹:</span>
+                                                <span className="font-bold text-amber-500">{sites.filter((s: any) => s.type === 'folder').length}</span>
+                                            </div>
+                                            <div className={`w-px h-4 ${isDarkMode ? 'bg-white/10' : 'bg-slate-200'}`} />
+                                            <div className="flex items-center gap-1.5">
+                                                <span className="opacity-60">总计:</span>
+                                                <span className="font-bold">{sites.length}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+
                                     <div className="space-y-2">
                                         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragOver={handleDragOver} onDragEnd={handleDragEnd}>
                                             <SortableContext items={categories} strategy={verticalListSortingStrategy}>
@@ -1651,6 +1683,35 @@ export function SettingsPanel({
                                                                     </div>
                                                                 </div>
                                                                 <div className="flex gap-1">
+                                                                    <button
+                                                                        onClick={() => {
+                                                                            setEditingSite({
+                                                                                id: null,
+                                                                                name: '',
+                                                                                url: '',
+                                                                                desc: '',
+                                                                                category: cat,
+                                                                                color: getRandomColor(),
+                                                                                icon: 'Globe',
+                                                                                iconType: 'auto',
+                                                                                customIconUrl: '',
+                                                                                titleColor: '',
+                                                                                descColor: '',
+                                                                                titleFont: '',
+                                                                                descFont: '',
+                                                                                titleSize: '',
+                                                                                descSize: '',
+                                                                                isHidden: false,
+                                                                                type: 'site',
+                                                                                parentId: ''
+                                                                            });
+                                                                            setIsModalOpen(true);
+                                                                        }}
+                                                                        className="p-2 rounded hover:bg-indigo-500/10 text-slate-400 hover:text-indigo-500 active:scale-90"
+                                                                        title="添加站点到此分类"
+                                                                    >
+                                                                        <Plus size={16} />
+                                                                    </button>
                                                                     <button onClick={() => toggleCategoryVisibility(cat)}
                                                                         className="p-2 rounded hover:bg-black/5 dark:hover:bg-white/10 text-slate-400 active:scale-90">{hiddenCategories.includes(cat) ?
                                                                             <EyeOff size={16} /> : <Eye size={16} />}</button>
@@ -1688,6 +1749,29 @@ export function SettingsPanel({
                                                                                         const target = s.id ? s : site;
                                                                                         const updated = { ...target, isHidden: !target.isHidden };
                                                                                         setSites(sites.map(s => s.id === target.id ? updated : s));
+                                                                                    }}
+                                                                                    onAddToFolder={(parentId: string, category: string) => {
+                                                                                        setEditingSite({
+                                                                                            id: null,
+                                                                                            name: '',
+                                                                                            url: '',
+                                                                                            desc: '',
+                                                                                            category: category,
+                                                                                            color: getRandomColor(),
+                                                                                            icon: 'Globe',
+                                                                                            iconType: 'auto',
+                                                                                            customIconUrl: '',
+                                                                                            titleColor: '',
+                                                                                            descColor: '',
+                                                                                            titleFont: '',
+                                                                                            descFont: '',
+                                                                                            titleSize: '',
+                                                                                            descSize: '',
+                                                                                            isHidden: false,
+                                                                                            type: 'site',
+                                                                                            parentId: parentId
+                                                                                        });
+                                                                                        setIsModalOpen(true);
                                                                                     }}
                                                                                 />
                                                                             ))}
@@ -1905,6 +1989,38 @@ export function SettingsPanel({
                                 }
                                 setFontToDelete(null);
                                 showToast('字体已删除');
+                            }}
+                        />
+                    )}
+
+                    {isResetFontsModalOpen && (
+                        <ConfirmationModal
+                            isOpen={true}
+                            title="重置所有字体设置"
+                            message="确定要将所有站点的自定义字体设置重置为全局默认吗？这将清除所有站点的个性化字体、颜色和大小设置。"
+                            confirmText="确认重置"
+                            cancelText="取消"
+                            isDarkMode={isDarkMode}
+                            onCancel={() => setIsResetFontsModalOpen(false)}
+                            onConfirm={async () => {
+                                setIsResetFontsModalOpen(false);
+                                try {
+                                    showToast('正在重置...', 'loading');
+                                    const res = await fetch('/api/admin/reset-fonts', { method: 'POST' });
+                                    if (res.ok) {
+                                        const data = await res.json();
+                                        const sitesRes = await fetch('/api/init');
+                                        if (sitesRes.ok) {
+                                            const initData = await sitesRes.json();
+                                            setSites(initData.sites);
+                                        }
+                                        showToast(data.message || '重置成功', 'success');
+                                    } else {
+                                        showToast('重置失败', 'error');
+                                    }
+                                } catch (e) {
+                                    showToast('操作失败', 'error');
+                                }
                             }}
                         />
                     )}

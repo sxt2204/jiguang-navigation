@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import NextImage from 'next/image';
 import { NOISE_BASE64 } from '@/lib/utils';
+import { getUploadUrl, isUploadPath } from '@/lib/upload-url';
 
 interface AuroraBackgroundProps {
     isDarkMode: boolean;
@@ -48,19 +49,34 @@ export function AuroraBackground({ isDarkMode, layoutSettings }: AuroraBackgroun
                 <>
                     {defaultAurora}
                     <div className={`fixed inset-0 z-0 pointer-events-none overflow-hidden transition-opacity duration-700 ease-in-out ${isLoaded ? 'opacity-100' : 'opacity-0'}`}>
-                        <NextImage
-                            src={layoutSettings.bgUrl || ''}
-                            alt="Background"
-                            fill
-                            priority
-                            quality={90}
-                            style={{
-                                objectFit: 'cover',
-                                objectPosition: `${bgX}% ${bgY}%`,
-                                transform: `scale(${scale})`,
-                            }}
-                            onLoad={() => setIsLoaded(true)}
-                        />
+                        {/* Use native img for upload paths to avoid Next.js Image optimization issues in Docker */}
+                        {isUploadPath(layoutSettings.bgUrl) ? (
+                            <img
+                                src={getUploadUrl(layoutSettings.bgUrl)}
+                                alt="Background"
+                                className="absolute inset-0 w-full h-full"
+                                style={{
+                                    objectFit: 'cover',
+                                    objectPosition: `${bgX}% ${bgY}%`,
+                                    transform: `scale(${scale})`,
+                                }}
+                                onLoad={() => setIsLoaded(true)}
+                            />
+                        ) : (
+                            <NextImage
+                                src={layoutSettings.bgUrl || ''}
+                                alt="Background"
+                                fill
+                                priority
+                                quality={90}
+                                style={{
+                                    objectFit: 'cover',
+                                    objectPosition: `${bgX}% ${bgY}%`,
+                                    transform: `scale(${scale})`,
+                                }}
+                                onLoad={() => setIsLoaded(true)}
+                            />
+                        )}
                         <div
                             className="absolute inset-0 bg-black transition-opacity duration-300"
                             style={{ opacity: (layoutSettings.bgOpacity ?? 40) / 100 }}

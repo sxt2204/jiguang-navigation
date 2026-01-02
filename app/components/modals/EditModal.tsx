@@ -285,25 +285,38 @@ export function EditModal({ site, categories, sites, isDarkMode, onClose, onSave
 
                                 <div>
                                     <label className={labelClass}>主题色</label>
-                                    <div className="flex flex-wrap gap-2">
-                                        {['#3B82F6', '#8B5CF6', '#EC4899', '#F97316', '#10B981', '#64748B'].map(c => (
-                                            <button key={c} type="button" onClick={() => setF({ ...f, color: c })}
-                                                className={`w-6 h-6 rounded-full transition-transform hover:scale-110 ring-2 ring-offset-2 dark:ring-offset-slate-900 ${f.color === c ? 'ring-indigo-500 scale-110' : 'ring-transparent'}`}
-                                                style={{ backgroundColor: c }}
-                                            />
-                                        ))}
-                                        <div className="w-px h-6 bg-slate-200 dark:bg-white/10 mx-1"></div>
-                                        <div className="relative group">
-                                            <div
-                                                className="w-6 h-6 rounded-full bg-gradient-to-br from-red-400 to-blue-400 cursor-pointer ring-2 ring-offset-2 dark:ring-offset-slate-900 ring-transparent group-hover:scale-110 transition-transform"></div>
-                                            <input type="color" value={f.color}
-                                                onChange={e => setF({ ...f, color: e.target.value })}
-                                                className="absolute inset-0 opacity-0 cursor-pointer" />
+                                    <div className="flex flex-col gap-2">
+                                        {/* 颜色网格 - 按色相排列，每行10个 */}
+                                        <div className="grid grid-cols-10 gap-1.5">
+                                            {[
+                                                // 第一行：红色系到黄色系
+                                                '#EF4444', '#F87171', '#FB923C', '#F97316', '#FBBF24', '#F59E0B', '#EAB308', '#FDE047', '#A3E635', '#84CC16',
+                                                // 第二行：绿色系到青色系
+                                                '#22C55E', '#10B981', '#14B8A6', '#0D9488', '#06B6D4', '#0EA5E9', '#38BDF8', '#3B82F6', '#6366F1', '#8B5CF6',
+                                                // 第三行：紫色系到粉色系 + 中性色
+                                                '#A855F7', '#7C3AED', '#C084FC', '#D946EF', '#EC4899', '#F43F5E', '#64748B', '#475569', '#1E293B', '#0F172A'
+                                            ].map(c => (
+                                                <button key={c} type="button" onClick={() => setF({ ...f, color: c })}
+                                                    className={`w-5 h-5 rounded-full transition-all hover:scale-125 ring-2 ring-offset-1 dark:ring-offset-slate-900 ${f.color === c ? 'ring-indigo-500 scale-110' : 'ring-transparent'}`}
+                                                    style={{ backgroundColor: c }}
+                                                />
+                                            ))}
                                         </div>
-                                        <button type="button" onClick={() => setF({ ...f, color: getRandomColor() })}
-                                            className="ml-auto text-xs text-indigo-500 hover:underline flex items-center gap-1">
-                                            <RefreshCw size={12} /> 随机
-                                        </button>
+                                        {/* 自定义颜色和随机按钮 */}
+                                        <div className="flex items-center gap-2 pt-1">
+                                            <div className="relative group">
+                                                <div
+                                                    className="w-6 h-6 rounded-full bg-gradient-to-br from-red-400 via-green-400 to-blue-400 cursor-pointer ring-2 ring-offset-2 dark:ring-offset-slate-900 ring-transparent group-hover:scale-110 transition-transform"></div>
+                                                <input type="color" value={f.color}
+                                                    onChange={e => setF({ ...f, color: e.target.value })}
+                                                    className="absolute inset-0 opacity-0 cursor-pointer" />
+                                            </div>
+                                            <span className="text-xs text-slate-400">自定义</span>
+                                            <button type="button" onClick={() => setF({ ...f, color: getRandomColor() })}
+                                                className="ml-auto text-xs text-indigo-500 hover:underline flex items-center gap-1">
+                                                <RefreshCw size={12} /> 随机
+                                            </button>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -367,27 +380,69 @@ export function EditModal({ site, categories, sites, isDarkMode, onClose, onSave
                                     </div>
                                 </div>
 
-                                {/* Parent Folder Selection - Only for Sites */}
-                                {f.type === 'site' && (
+                                {/* Parent Folder Selection - For both Sites and Folders */}
+                                <div className="relative">
+                                    <label className={labelClass}>所属文件夹</label>
                                     <div className="relative">
-                                        <label className={labelClass}>所属文件夹</label>
-                                        <div className="relative">
-                                            <select
-                                                className={`${inputClass} appearance-none cursor-pointer`}
-                                                value={f.parentId || ''}
-                                                onChange={e => setF({ ...f, parentId: e.target.value })}
-                                            >
-                                                <option value="">(无 - 根目录)</option>
-                                                {sites && sites
-                                                    .filter((s: any) => s.type === 'folder' && s.id !== site?.id && s.category === f.category)
-                                                    .map((folder: any) => (
-                                                        <option key={folder.id} value={folder.id}>{folder.name}</option>
-                                                    ))}
-                                            </select>
-                                            <ChevronDown size={16} className="absolute right-3 top-3.5 opacity-50 pointer-events-none" />
-                                        </div>
+                                        <select
+                                            className={`${inputClass} appearance-none cursor-pointer`}
+                                            value={f.parentId || ''}
+                                            onChange={e => setF({ ...f, parentId: e.target.value })}
+                                        >
+                                            <option value="">(无 - 根目录)</option>
+                                            {(() => {
+                                                // Build folder tree with depth
+                                                const getDepth = (folderId: string, visited = new Set<string>()): number => {
+                                                    if (visited.has(folderId)) return 0; // Prevent infinite loop
+                                                    visited.add(folderId);
+                                                    const folder = sites?.find((s: any) => s.id === folderId);
+                                                    if (!folder || !folder.parentId) return 0;
+                                                    return 1 + getDepth(folder.parentId, visited);
+                                                };
+
+                                                // Check if folder is descendant of target (to prevent circular reference)
+                                                const isDescendant = (folderId: string, targetId: string, visited = new Set<string>()): boolean => {
+                                                    if (visited.has(folderId)) return false;
+                                                    visited.add(folderId);
+                                                    const folder = sites?.find((x: any) => x.id === folderId);
+                                                    if (!folder) return false;
+                                                    if (folder.parentId === targetId) return true;
+                                                    if (folder.parentId) return isDescendant(folder.parentId, targetId, visited);
+                                                    return false;
+                                                };
+
+                                                // Get all valid folders with their depth
+                                                const validFolders = sites?.filter((s: any) => {
+                                                    if (s.type !== 'folder') return false;
+                                                    if (s.id === site?.id) return false;
+                                                    if (s.category !== f.category) return false;
+                                                    if (f.type === 'folder' && site?.id) {
+                                                        if (isDescendant(s.id, site.id)) return false;
+                                                    }
+                                                    return true;
+                                                }).map((folder: any) => ({
+                                                    ...folder,
+                                                    depth: getDepth(folder.id)
+                                                })).sort((a: any, b: any) => {
+                                                    // Sort by parent path then by name
+                                                    const getPath = (f: any): string => {
+                                                        if (!f.parentId) return f.name;
+                                                        const parent = sites?.find((s: any) => s.id === f.parentId);
+                                                        return parent ? getPath(parent) + '/' + f.name : f.name;
+                                                    };
+                                                    return getPath(a).localeCompare(getPath(b));
+                                                }) || [];
+
+                                                return validFolders.map((folder: any) => (
+                                                    <option key={folder.id} value={folder.id}>
+                                                        {'　'.repeat(folder.depth)}{folder.depth > 0 ? '└ ' : ''}{folder.name}
+                                                    </option>
+                                                ));
+                                            })()}
+                                        </select>
+                                        <ChevronDown size={16} className="absolute right-3 top-3.5 opacity-50 pointer-events-none" />
                                     </div>
-                                )}
+                                </div>
 
                                 <div className="flex-1">
                                     <label className={labelClass}>简介描述</label>

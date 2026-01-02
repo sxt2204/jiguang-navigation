@@ -1,5 +1,6 @@
 import React, { useRef } from 'react';
 import { Move } from 'lucide-react';
+import { getUploadUrl } from '@/lib/upload-url';
 
 interface BackgroundPositionPreviewProps {
     imageUrl: string;
@@ -53,7 +54,7 @@ export function BackgroundPositionPreview({ imageUrl, x, y, scale, onChange }: B
                 <div
                     className="absolute inset-0 bg-cover bg-no-repeat pointer-events-none"
                     style={{
-                        backgroundImage: `url(${imageUrl})`,
+                        backgroundImage: `url(${getUploadUrl(imageUrl)})`,
                         backgroundPosition: `${x}% ${y}%`,
                         transform: `scale(${scale / 100})`,
                         transformOrigin: 'center center'
